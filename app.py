@@ -32,7 +32,7 @@ rpm_values = st.sidebar.multiselect(
 
 mu_values = st.sidebar.multiselect(
     "Viscosity cases (Pa·s)",
-    [0.02, 0.05, 0.10, 0.20],
+    [0.03, 0.05, 0.10, 0.20],
     default=[0.02, 0.05, 0.10],
 )
 
