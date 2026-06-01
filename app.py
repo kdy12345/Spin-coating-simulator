@@ -17,7 +17,7 @@ rpm = st.sidebar.slider("Spin Speed (RPM)", 500, 6000, 3000, 100)
 h0_um = st.sidebar.number_input("Initial Thickness h₀ (μm)", value=100.0, min_value=1.0)
 mu0 = st.sidebar.number_input("Initial Viscosity μ₀ (Pa·s)", value=0.05, min_value=0.001)
 rho = st.sidebar.number_input("Density ρ (kg/m³)", value=1000.0, min_value=1.0)
-E_um_s = st.sidebar.number_input("Evaporation Rate E (μm/s)", value=0.30, min_value=0.0)
+E_um_s = st.sidebar.number_input("Evaporation Rate E (μm/s)", value=0.01, min_value=0.0)
 k = st.sidebar.number_input("Viscosity Growth Rate k (1/s)", value=0.03, min_value=0.0)
 t_end = st.sidebar.number_input("Simulation Time (s)", value=60.0, min_value=1.0)
 dt = st.sidebar.number_input("Time Step Δt (s)", value=0.05, min_value=0.001)
@@ -26,8 +26,8 @@ st.sidebar.markdown("---")
 st.sidebar.write("Parameter Study")
 rpm_values = st.sidebar.multiselect(
     "RPM cases",
-    [1000, 2000, 3000, 4000, 5000, 6000],
-    default=[1000, 3000, 5000],
+    [500, 1000, 1500, 2000, 2500, 3000],
+    default=[1000, 2000, 3000],
 )
 
 mu_values = st.sidebar.multiselect(
@@ -38,8 +38,8 @@ mu_values = st.sidebar.multiselect(
 
 E_values = st.sidebar.multiselect(
     "Evaporation cases (μm/s)",
-    [0.0, 0.1, 0.3, 0.5, 1.0],
-    default=[0.0, 0.3, 0.5],
+    [0.0, 0.01, 0.03, 0.05, 0.10],
+    default=[0.0, 0.01, 0.05],
 )
 
 # -----------------------------
