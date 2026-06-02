@@ -45,32 +45,32 @@ E_values = st.sidebar.multiselect(
 # -----------------------------
 # Core functions
 # -----------------------------
-def simulate_spin_coating(rpm, h0_um, mu0, rho, E_um_s, k, t_end, dt, use_evaporation=True, use_viscosity_growth=True):
+def simulate_spin_coating(rpm, h_0, mu0, rho, E, k, t, dt, use_evaporation=True, use_viscosity_growth=True):
     omega = rpm * 2 * np.pi / 60
-    time = np.arange(0, t_end + dt, dt)
+    time = np.arange(0, t + dt, dt)
 
     h_m = np.zeros_like(time)
-    h_m[0] = h0_um * 1e-6
+    h_m[0] = h_0 * 1e-6
 
     mu_arr = np.zeros_like(time)
     dhdt_arr = np.zeros_like(time)
 
-    E_m_s = E_um_s * 1e-6 if use_evaporation else 0.0
+    E = E * 1e-6 if use_evaporation else 0.0
 
     for i in range(len(time) - 1):
         if use_viscosity_growth:
-            mu = mu0 * np.exp(k * time[i])
+            mu = mu_0 * np.exp(k * time[i])
         else:
-            mu = mu0
+            mu = mu_0
 
         mu_arr[i] = mu
 
-        dhdt = -(2 * rho * omega**2 / (3 * mu)) * h_m[i]**3 - E_m_s
+        dhdt = -(2 * rho * omega**2 / (3 * mu)) * h_m[i]**3 - E
         dhdt_arr[i] = dhdt
 
         h_m[i + 1] = max(h_m[i] + dhdt * dt, 0)
 
-    mu_arr[-1] = mu0 * np.exp(k * time[-1]) if use_viscosity_growth else mu0
+    mu_arr[-1] = mu_0 * np.exp(k * time[-1]) if use_viscosity_growth else mu_0
     dhdt_arr[-1] = dhdt_arr[-2]
 
     df = pd.DataFrame({
@@ -98,13 +98,13 @@ def plot_line(df, x, y, label=None):
 # Main simulation
 # -----------------------------
 df_ebp = simulate_spin_coating(
-    rpm, h0_um, mu0, rho, 0.0, 0.0, t_end, dt,
+    rpm, h_0, mu_0, rho, 0.0, 0.0, t, dt,
     use_evaporation=False,
     use_viscosity_growth=False,
 )
 
 df_meyer = simulate_spin_coating(
-    rpm, h0_um, mu0, rho, E_um_s, k, t_end, dt,
+    rpm, h_0, mu_0, rho, E, k, t, dt,
     use_evaporation=True,
     use_viscosity_growth=True,
 )
@@ -152,7 +152,7 @@ with tab2:
     summary = []
 
     for r in rpm_values:
-        df = simulate_spin_coating(r, h0_um, mu0, rho, E_um_s, k, t_end, dt)
+        df = simulate_spin_coating(r, h_0, mu_0, rho, E, k, t, dt)
         ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"{r} RPM")
         summary.append([r, df["Thickness (μm)"].iloc[-1]])
 
@@ -171,7 +171,7 @@ with tab3:
     summary = []
 
     for mu_case in mu_values:
-        df = simulate_spin_coating(rpm, h0_um, mu_case, rho, E_um_s, k, t_end, dt)
+        df = simulate_spin_coating(rpm, h_0, mu_case, rho, E, k, t, dt)
         ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"μ₀={mu_case} Pa·s")
         summary.append([mu_case, df["Thickness (μm)"].iloc[-1]])
 
@@ -190,7 +190,7 @@ with tab4:
     summary = []
 
     for E_case in E_values:
-        df = simulate_spin_coating(rpm, h0_um, mu0, rho, E_case, k, t_end, dt)
+        df = simulate_spin_coating(rpm, h_0, mu_0, rho, E_case, k, t, dt)
         ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"E={E_case} μm/s")
         summary.append([E_case, df["Thickness (μm)"].iloc[-1]])
 
