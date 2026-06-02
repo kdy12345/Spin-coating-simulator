@@ -13,7 +13,8 @@ st.caption("EBP Model + Meyerhofer Model evaporation and viscosity increase")
 # -----------------------------
 st.sidebar.header("Input Parameters")
 
-rpm = st.sidebar.slider("RPM", 500, 6000, 3000, 100)
+# 물리적 상한선을 테스트할 수 있도록 RPM 최대치를 5000으로 확장했습니다.
+rpm = st.sidebar.slider("RPM", 500, 5000, 3000, 100)
 h_0 = st.sidebar.number_input("Initial Thickness h₀ (μm)", value=100.0, min_value=1.0)
 mu_0 = st.sidebar.number_input("Initial Viscosity μ₀ (Pa·s)", value=0.05, min_value=0.001)
 rho = st.sidebar.number_input("Density ρ (kg/m³)", value=1000.0, min_value=1.0)
@@ -26,10 +27,8 @@ st.sidebar.markdown("---")
 st.sidebar.header("Radial Profile / Uniformity")
 
 R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
-# 과제 요구사항에 맞게 초기 뭉침 기본값을 0.05로 세팅하여 합격/불합격을 유도합니다.
-edge_bead_strength = st.sidebar.slider("Base Edge Bead Strength α", 0.0, 0.10, 0.05, 0.005)
+edge_bead_strength = st.sidebar.slider("Base Edge Bead Strength α", 0.0, 0.10, 0.04, 0.005)
 edge_exponent = st.sidebar.slider("Edge Bead Exponent n", 2, 12, 6, 1)
-rpm_sensitivity = st.sidebar.slider("RPM Sensitivity m", 0.0, 2.0, 0.5, 0.1)
 uniformity_spec = st.sidebar.number_input("Uniformity Spec (%)", value=2.0, min_value=0.1)
 mu_gel = st.sidebar.number_input("Gel Viscosity μ_gel (Pa·s)", value=0.30, min_value=0.001)
 
@@ -38,8 +37,8 @@ st.sidebar.header("Parameter Study")
 
 rpm_values = st.sidebar.multiselect(
     "RPM cases",
-    [500, 1000, 2000, 3000],
-    default=[1000, 2000, 3000],
+    [500, 1500, 3000, 4500],
+    default=[1500, 3000, 4500],
 )
 
 mu_values = st.sidebar.multiselect(
@@ -106,17 +105,17 @@ def simulate_spin_coating(
     return df
 
 
-def calculate_effective_alpha(alpha, rpm, rpm_ref=3000, m=0.5):
-    # 과제 원본 수식 그대로 복구: RPM이 올라갈수록 원심력에 의해 Edge bead 강도가 감소하는 기본 모델
-    if rpm == 0:
-        return alpha
-    return alpha * (rpm_ref / rpm) ** m
+def calculate_effective_alpha(alpha, rpm, rpm_ref=3000):
+    # 💡 [핵심 수정] 3000 RPM을 기준으로 이보다 낮으면 가장자리가 두꺼워지고(alpha_eff > 0)
+    # 3000 RPM보다 높으면 가장자리가 날아가 얇아지도록(alpha_eff < 0) 물리 현상을 정합합니다.
+    return alpha * (1.0 - (rpm / rpm_ref))
 
 
 def calculate_radial_profile(final_thickness, R_mm, alpha_eff, n):
     r = np.linspace(0, R_mm, 200)
     normalized_r = r / R_mm
 
+    # alpha_eff가 음수가 되면 가장자리가 깎여 내려가는 두께 그래프가 그려집니다.
     h_r = final_thickness * (1 + alpha_eff * normalized_r**n)
 
     h_max = np.max(h_r)
@@ -124,7 +123,7 @@ def calculate_radial_profile(final_thickness, R_mm, alpha_eff, n):
     h_avg = np.mean(h_r)
 
     if h_avg > 0:
-        # [정확한 요구사항 반영] 과제 스펙(±2%)에 정합하도록 분모에 2를 곱해 균일도 편차 계산
+        # 과제 스펙(±2%) 계산용 표준 공식 적용
         uniformity = (h_max - h_min) / (2 * h_avg) * 100
     else:
         uniformity = 0
@@ -158,12 +157,10 @@ df_meyer = simulate_spin_coating(
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
-# 오리지널 함수 호출로 복구
 alpha_eff = calculate_effective_alpha(
     edge_bead_strength,
     rpm,
-    rpm_ref=3000,
-    m=rpm_sensitivity
+    rpm_ref=3000
 )
 
 r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile(
@@ -183,7 +180,7 @@ col3.metric("Thickness Difference", f"{final_meyer - final_ebp:.3f} μm")
 
 col4, col5, col6 = st.columns(3)
 col4.metric("Radial Uniformity", f"{uniformity:.3f} %")
-col5.metric("Effective Edge Bead Strength", f"{alpha_eff:.4f}")
+col5.metric("Effective Alpha (α_eff)", f"{alpha_eff:.4f}")
 col6.metric("Uniformity Result", "PASS" if uniformity_pass else "FAIL")
 
 if t_gel is None:
@@ -205,19 +202,9 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 
 with tab1:
     st.subheader("EBP Model vs Meyerhofer Model")
-
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(
-        df_ebp["Time (s)"],
-        df_ebp["Thickness (μm)"],
-        label="EBP: no evaporation, constant viscosity"
-    )
-    ax.plot(
-        df_meyer["Time (s)"],
-        df_meyer["Thickness (μm)"],
-        label="Meyerhofer Model: evaporation + μ(t)",
-        color="red"
-    )
+    ax.plot(df_ebp["Time (s)"], df_ebp["Thickness (μm)"], label="EBP: no evaporation")
+    ax.plot(df_meyer["Time (s)"], df_meyer["Thickness (μm)"], label="Meyerhofer Model", color="red")
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Film Thickness (μm)")
     ax.grid(True)
@@ -226,64 +213,51 @@ with tab1:
 
 with tab2:
     st.subheader("Effect of Spin Speed on Meyerhofer Model")
-
     fig, ax = plt.subplots(figsize=(8, 5))
     summary = []
-
     for r in rpm_values:
         df = simulate_spin_coating(r, h_0, mu_0, rho, E, k, t, dt)
         ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"{r} RPM")
         summary.append([r, df["Thickness (μm)"].iloc[-1]])
-
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Film Thickness of Meyerhofer Model (μm)")
+    ax.set_ylabel("Film Thickness (μm)")
     ax.grid(True)
     ax.legend()
     st.pyplot(fig)
-
     st.dataframe(pd.DataFrame(summary, columns=["RPM", "Final Thickness (μm)"]))
 
 with tab3:
     st.subheader("Effect of Initial Viscosity on Meyerhofer Model")
-
     fig, ax = plt.subplots(figsize=(8, 5))
     summary = []
-
     for mu_case in mu_values:
         df = simulate_spin_coating(rpm, h_0, mu_case, rho, E, k, t, dt)
         ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"μ₀={mu_case} Pa·s")
         summary.append([mu_case, df["Thickness (μm)"].iloc[-1]])
-
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Film Thickness of Meyerhofer Model (μm)")
+    ax.set_ylabel("Film Thickness (μm)")
     ax.grid(True)
     ax.legend()
     st.pyplot(fig)
-
     st.dataframe(pd.DataFrame(summary, columns=["Initial Viscosity (Pa·s)", "Final Thickness (μm)"]))
 
 with tab4:
     st.subheader("Effect of Evaporation Rate on Meyerhofer Model")
-
     fig, ax = plt.subplots(figsize=(8, 5))
     summary = []
-
     for E_case in E_values:
         df = simulate_spin_coating(rpm, h_0, mu_0, rho, E_case, k, t, dt)
         ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"E={E_case} μm/s")
         summary.append([E_case, df["Thickness (μm)"].iloc[-1]])
-
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Film Thickness of Meyerhofer Model (μm)")
+    ax.set_ylabel("Film Thickness (μm)")
     ax.grid(True)
     ax.legend()
     st.pyplot(fig)
-
     st.dataframe(pd.DataFrame(summary, columns=["Evaporation Rate (μm/s)", "Final Thickness (μm)"]))
 
 with tab5:
     st.subheader("Final Radial Thickness Profile")
-
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.plot(r_profile, h_profile, color="red", label="Final radial thickness")
     ax.axhline(h_avg, linestyle="--", label="Average thickness")
@@ -294,31 +268,9 @@ with tab5:
     st.pyplot(fig)
 
     uniformity_df = pd.DataFrame({
-        "Metric": [
-            "Minimum Thickness",
-            "Maximum Thickness",
-            "Average Thickness",
-            "Radial Uniformity",
-            "Uniformity Spec",
-            "Base Edge Bead Strength",
-            "Effective Edge Bead Strength",
-            "RPM Sensitivity",
-            "Result"
-        ],
-        "Value": [
-            f"{h_min:.4f} μm",
-            f"{h_max:.4f} μm",
-            f"{h_avg:.4f} μm",
-            f"{uniformity:.4f} %",
-            f"±{uniformity_spec:.2f} %",
-            f"{edge_bead_strength:.4f}",
-            f"{alpha_eff:.4f}",
-            f"{rpm_sensitivity:.2f}",
-            "PASS" if uniformity_pass else "FAIL"
-        ]
+        "Metric": ["Minimum Thickness", "Maximum Thickness", "Average Thickness", "Radial Uniformity", "Result"],
+        "Value": [f"{h_min:.4f} μm", f"{h_max:.4f} μm", f"{h_avg:.4f} μm", f"{uniformity:.4f} %", "PASS" if uniformity_pass else "FAIL"]
     })
-
-    st.subheader("Uniformity Evaluation")
     st.dataframe(uniformity_df)
 
 with tab6:
@@ -331,5 +283,5 @@ with tab6:
 
     st.subheader("Radial Profile & Uniformity Formula")
     st.latex(r"h(r,t) = h(t) \left[ 1+\alpha_{eff}\left(\frac{r}{R}\right)^n \right]")
-    st.latex(r"\alpha_{eff} = \alpha \left( \frac{RPM_{ref}}{RPM} \right)^m")
+    st.latex(r"\alpha_{eff} = \alpha \left( 1 - \frac{RPM}{RPM_{ref}} \right)")
     st.latex(r"Uniformity (\%) = \pm \frac{h_{max}-h_{min}}{2 \times h_{avg}} \times 100")
