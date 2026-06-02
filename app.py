@@ -119,10 +119,10 @@ def calculate_radial_profile(thickness, R_mm, edge_bead_width, alpha_t):
     h_min = np.min(h_r)
     h_avg = np.mean(h_r)
 
-    if h_avg > 0:
-        uniformity = (h_max - h_min) / (2 * h_avg) * 100
+    if h_avg <= 1e-6:
+        uniformity = np.nan
     else:
-        uniformity = 0
+        uniformity = (h_max - h_min) / (2 * h_avg) * 100
 
     return r, h_r, uniformity, h_max, h_min, h_avg
 
@@ -133,6 +133,20 @@ def calculate_t_gel(eta_0, eta_gel, k):
     if eta_gel <= eta_0:
         return 0
     return np.log(eta_gel / eta_0) / k
+
+
+def format_uniformity(value):
+    if np.isnan(value):
+        return "Film depleted"
+    return f"±{value:.3f} %"
+
+
+def check_uniformity_pass(uniformity_value, final_thickness, spec):
+    if final_thickness <= 1e-6:
+        return False
+    if np.isnan(uniformity_value):
+        return False
+    return uniformity_value <= spec
 
 
 def evaluate_condition(rpm_case, eta_case):
@@ -160,7 +174,7 @@ def evaluate_condition(rpm_case, eta_case):
     )
 
     omega_case = rpm_case * 2 * np.pi / 60
-    result = "PASS" if uniformity_case <= uniformity_spec else "FAIL"
+    result = "PASS" if check_uniformity_pass(uniformity_case, final_thickness, uniformity_spec) else "FAIL"
 
     return {
         "RPM": rpm_case,
@@ -168,7 +182,7 @@ def evaluate_condition(rpm_case, eta_case):
         "η₀ (Pa·s)": eta_case,
         "Final Thickness (μm)": final_thickness,
         "Edge Bead Strength α(t_end)": alpha_case,
-        "Radial Uniformity (±%)": uniformity_case,
+        "Radial Uniformity (±%)": uniformity_case if not np.isnan(uniformity_case) else None,
         "Result": result,
     }
 
@@ -204,7 +218,7 @@ r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile
 )
 
 t_gel = calculate_t_gel(eta_0, eta_gel, k)
-uniformity_pass = uniformity <= uniformity_spec
+uniformity_pass = check_uniformity_pass(uniformity, final_meyer, uniformity_spec)
 
 col1, col2, col3 = st.columns(3)
 col1.metric("Final Thickness: EBP", f"{final_ebp:.3f} μm")
@@ -213,8 +227,11 @@ col3.metric("Thickness Difference", f"{final_meyer - final_ebp:.3f} μm")
 
 col4, col5, col6 = st.columns(3)
 col4.metric("Input Evaporation Rate E", f"{E:.4f} μm/s")
-col5.metric("Radial Uniformity", f"±{uniformity:.3f} %")
+col5.metric("Radial Uniformity", format_uniformity(uniformity))
 col6.metric("Spec Result", "PASS" if uniformity_pass else "FAIL")
+
+if final_meyer <= 1e-6:
+    st.warning("The Meyerhofer Model predicts film depletion. Uniformity is not meaningful in this condition.")
 
 if t_gel is None:
     st.info("t_gel is not defined because k = 0. Viscosity does not increase with time.")
@@ -372,7 +389,7 @@ with tab5:
     col_a, col_b, col_c = st.columns(3)
     col_a.metric("Selected Time", f"{selected_time_actual:.2f} s")
     col_b.metric("Edge Bead Strength α(t)", f"{alpha_selected:.4f}")
-    col_c.metric("Radial Uniformity", f"±{u_t:.4f} %")
+    col_c.metric("Radial Uniformity", format_uniformity(u_t))
 
     st.write(
         "This tab visualizes the time-dependent radial thickness profile h(r,t). "
@@ -409,7 +426,7 @@ with tab6:
             f"{h_min:.4f} μm",
             f"{h_max:.4f} μm",
             f"{h_avg:.4f} μm",
-            f"±{uniformity:.4f} %",
+            format_uniformity(uniformity),
             f"±{uniformity_spec:.2f} %",
             f"{R_mm:.2f} mm",
             f"{edge_bead_width:.2f} mm",
@@ -425,11 +442,6 @@ with tab6:
 
 with tab7:
     st.subheader("Challenge Mode: Find RPM and η₀ Conditions for ±2% Uniformity")
-
-    st.write(
-        "This mode searches RPM and initial viscosity η₀ combinations that satisfy "
-        "the prescribed radial uniformity specification."
-    )
 
     challenge_rpm_values = st.multiselect(
         "Challenge RPM candidates",
@@ -493,10 +505,9 @@ with tab8:
         - Higher initial viscosity suppresses radial flow, resulting in a thicker final film.
         - Higher initial viscosity increases the simplified edge bead factor.
         - Higher solvent evaporation rate directly decreases the film thickness.
+        - Film depletion is treated as a failed condition because radial uniformity is not physically meaningful when the film thickness becomes zero.
         - Radial evolution h(r,t) is visualized using a time slider.
         - Challenge Mode searches RPM and η₀ combinations satisfying the ±2% uniformity spec.
-        - Radial uniformity is evaluated as ±(h_max - h_min)/(2h_avg) × 100.
-        - The predicted gel time indicates when viscosity reaches the selected gel threshold.
         """
     )
 
