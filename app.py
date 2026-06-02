@@ -10,7 +10,7 @@ st.caption("EBP Model + Meyerhofer Model evaporation and viscosity increase")
 
 st.sidebar.header("Input Parameters")
 
-rpm = st.sidebar.slider("RPM", 500, 6000, 3000, 100)
+rpm = st.sidebar.slider("RPM", 500, 6000, 6000, 100)
 h_0 = st.sidebar.number_input("Initial Thickness h₀ (μm)", value=100.0, min_value=1.0)
 eta_0 = st.sidebar.number_input("Initial Viscosity η₀ (Pa·s)", value=0.05, min_value=0.001)
 rho = st.sidebar.number_input("Density ρ (kg/m³)", value=1000.0, min_value=1.0)
