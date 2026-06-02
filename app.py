@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Spin Coating Simulator", layout="bold")
+st.set_page_config(page_title="Spin Coating Simulator", layout="wide")
 
 st.title("Spin Coating Simulator")
 st.caption("EBP Model + Meyerhofer-type evaporation and viscosity increase")
