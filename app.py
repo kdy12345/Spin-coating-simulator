@@ -26,8 +26,9 @@ st.sidebar.markdown("---")
 st.sidebar.header("Radial Profile / Uniformity")
 
 R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
-edge_bead_strength = st.sidebar.slider("Edge Bead Strength α", 0.0, 0.10, 0.02, 0.005)
+edge_bead_strength = st.sidebar.slider("Base Edge Bead Strength α", 0.0, 0.10, 0.02, 0.005)
 edge_exponent = st.sidebar.slider("Edge Bead Exponent n", 2, 12, 6, 1)
+rpm_sensitivity = st.sidebar.slider("RPM Sensitivity m", 0.0, 2.0, 0.5, 0.1)
 uniformity_spec = st.sidebar.number_input("Uniformity Spec (%)", value=2.0, min_value=0.1)
 mu_gel = st.sidebar.number_input("Gel Viscosity μ_gel (Pa·s)", value=0.30, min_value=0.001)
 
@@ -104,11 +105,15 @@ def simulate_spin_coating(
     return df
 
 
-def calculate_radial_profile(final_thickness, R_mm, alpha, n):
+def calculate_effective_alpha(alpha, rpm, rpm_ref=3000, m=0.5):
+    return alpha * (rpm / rpm_ref) ** m
+
+
+def calculate_radial_profile(final_thickness, R_mm, alpha_eff, n):
     r = np.linspace(0, R_mm, 200)
     normalized_r = r / R_mm
 
-    h_r = final_thickness * (1 + alpha * normalized_r**n)
+    h_r = final_thickness * (1 + alpha_eff * normalized_r**n)
 
     h_max = np.max(h_r)
     h_min = np.min(h_r)
@@ -148,10 +153,17 @@ df_meyer = simulate_spin_coating(
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
+alpha_eff = calculate_effective_alpha(
+    edge_bead_strength,
+    rpm,
+    rpm_ref=3000,
+    m=rpm_sensitivity
+)
+
 r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile(
     final_meyer,
     R_mm,
-    edge_bead_strength,
+    alpha_eff,
     edge_exponent
 )
 
@@ -165,7 +177,7 @@ col3.metric("Thickness Difference", f"{final_meyer - final_ebp:.3f} μm")
 
 col4, col5, col6 = st.columns(3)
 col4.metric("Radial Uniformity", f"{uniformity:.3f} %")
-col5.metric("Uniformity Spec", f"±{uniformity_spec:.2f} %")
+col5.metric("Effective Edge Bead Strength", f"{alpha_eff:.4f}")
 col6.metric("Uniformity Result", "PASS" if uniformity_pass else "FAIL")
 
 if t_gel is None:
@@ -280,13 +292,6 @@ with tab5:
     ax.legend()
     st.pyplot(fig)
 
-    profile_df = pd.DataFrame({
-        "Radial Position r (mm)": r_profile,
-        "Final Thickness h(r) (μm)": h_profile,
-    })
-
-    st.subheader("Uniformity Evaluation")
-
     uniformity_df = pd.DataFrame({
         "Metric": [
             "Minimum Thickness",
@@ -294,6 +299,9 @@ with tab5:
             "Average Thickness",
             "Radial Uniformity",
             "Uniformity Spec",
+            "Base Edge Bead Strength",
+            "Effective Edge Bead Strength",
+            "RPM Sensitivity",
             "Result"
         ],
         "Value": [
@@ -302,16 +310,20 @@ with tab5:
             f"{h_avg:.4f} μm",
             f"{uniformity:.4f} %",
             f"±{uniformity_spec:.2f} %",
+            f"{edge_bead_strength:.4f}",
+            f"{alpha_eff:.4f}",
+            f"{rpm_sensitivity:.2f}",
             "PASS" if uniformity_pass else "FAIL"
         ]
     })
 
+    st.subheader("Uniformity Evaluation")
     st.dataframe(uniformity_df)
 
     st.write(
         "The radial profile is a simplified edge-bead representation. "
-        "The center region is assumed to follow the Meyerhofer Model thickness, "
-        "while the wafer edge becomes slightly thicker according to the selected edge bead strength."
+        "In this model, the effective edge bead strength increases with RPM, "
+        "so radial uniformity changes when spin speed is adjusted."
     )
 
 with tab6:
@@ -329,6 +341,7 @@ with tab6:
         - In the early stage, rotation-driven thinning is dominant.
         - As solvent evaporates and viscosity increases, radial flow weakens and evaporation becomes more important.
         - The radial profile provides a simplified estimate of final thickness uniformity.
+        - The effective edge bead strength is adjusted by RPM, so radial uniformity changes with spin speed.
         - The predicted gel time indicates when viscosity reaches the selected gel threshold.
         """
     )
@@ -361,8 +374,17 @@ with tab6:
     =
     h(t)
     \left[
-    1+\alpha\left(\frac{r}{R}\right)^n
+    1+\alpha_{eff}\left(\frac{r}{R}\right)^n
     \right]
+    """)
+
+    st.latex(r"""
+    \alpha_{eff}
+    =
+    \alpha
+    \left(
+    \frac{RPM}{RPM_{ref}}
+    \right)^m
     """)
 
     st.latex(r"""
