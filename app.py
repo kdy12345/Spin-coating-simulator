@@ -76,11 +76,7 @@ def simulate_spin_coating(
     E_m_s = E * 1e-6 if use_evaporation else 0.0
 
     for i in range(len(time) - 1):
-        if use_viscosity_growth:
-            eta = eta_0 * np.exp(k * time[i])
-        else:
-            eta = eta_0
-
+        eta = eta_0 * np.exp(k * time[i]) if use_viscosity_growth else eta_0
         eta_arr[i] = eta
 
         dhdt = -(2 * rho * omega**2 / (3 * eta)) * h_m[i]**3 - E_m_s
@@ -91,7 +87,7 @@ def simulate_spin_coating(
     eta_arr[-1] = eta_0 * np.exp(k * time[-1]) if use_viscosity_growth else eta_0
     dhdt_arr[-1] = dhdt_arr[-2]
 
-    df = pd.DataFrame({
+    return pd.DataFrame({
         "Time (s)": time,
         "Thickness (μm)": h_m * 1e6,
         "Viscosity η (Pa·s)": eta_arr,
@@ -99,11 +95,16 @@ def simulate_spin_coating(
         "dh/dt (μm/s)": dhdt_arr * 1e6,
     })
 
-    return df
 
+def calculate_alpha_t(alpha_0, beta, time_value, rpm, eta_0):
+    rpm_ref = 2000.0
+    eta_ref = 0.05
 
-def calculate_alpha_t(alpha_0, beta, time_value):
-    return alpha_0 * np.exp(-beta * time_value)
+    rpm_factor = (rpm_ref / rpm) ** 0.5
+    eta_factor = (eta_0 / eta_ref) ** 0.5
+    time_factor = np.exp(-beta * time_value)
+
+    return alpha_0 * rpm_factor * eta_factor * time_factor
 
 
 def calculate_radial_profile(thickness, R_mm, edge_bead_width, alpha_t):
@@ -149,7 +150,13 @@ df_meyer = simulate_spin_coating(
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
-alpha_final = calculate_alpha_t(base_edge_bead, edge_relaxation_rate, t)
+alpha_final = calculate_alpha_t(
+    base_edge_bead,
+    edge_relaxation_rate,
+    t,
+    rpm,
+    eta_0,
+)
 
 r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile(
     final_meyer,
@@ -218,10 +225,10 @@ with tab2:
     fig, ax = plt.subplots(figsize=(8, 5))
     summary = []
 
-    for r in rpm_values:
-        df = simulate_spin_coating(r, h_0, eta_0, rho, E, k, t, dt)
-        ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"{r} RPM")
-        summary.append([r, E, df["Thickness (μm)"].iloc[-1]])
+    for r_case in rpm_values:
+        df = simulate_spin_coating(r_case, h_0, eta_0, rho, E, k, t, dt)
+        ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"{r_case} RPM")
+        summary.append([r_case, E, df["Thickness (μm)"].iloc[-1]])
 
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Film Thickness of Meyerhofer Model (μm)")
@@ -303,6 +310,8 @@ with tab5:
         base_edge_bead,
         edge_relaxation_rate,
         selected_time_actual,
+        rpm,
+        eta_0,
     )
 
     r_t, h_rt, u_t, hmax_t, hmin_t, havg_t = calculate_radial_profile(
@@ -328,8 +337,8 @@ with tab5:
 
     st.write(
         "This tab visualizes the time-dependent radial thickness profile h(r,t). "
-        "The edge bead strength decreases with time according to α(t)=α₀exp(−βt), "
-        "so the radial profile becomes flatter as spin coating proceeds."
+        "The edge bead strength changes with RPM, initial viscosity, and time. "
+        "Higher RPM reduces the edge bead factor, while higher viscosity increases it."
     )
 
 with tab6:
@@ -391,14 +400,14 @@ with tab7:
     st.markdown(
         """
         - Higher RPM increases centrifugal thinning, so the film thickness decreases faster.
+        - Higher RPM also reduces the simplified edge bead factor in the radial profile model.
         - Higher initial viscosity suppresses radial flow, resulting in a thicker final film.
+        - Higher initial viscosity increases the simplified edge bead factor.
         - Higher solvent evaporation rate directly decreases the film thickness.
         - In the early stage, rotation-driven thinning is dominant.
         - As solvent evaporates and viscosity increases, radial flow weakens and evaporation becomes more important.
         - Radial evolution h(r,t) is visualized using a time slider.
-        - Edge bead strength decreases with time using α(t)=α₀exp(−βt).
         - Radial uniformity is evaluated as ±(h_max - h_min)/(2h_avg) × 100.
-        - Wafer radius affects the radial profile because the edge bead region has a fixed physical width.
         - The predicted gel time indicates when viscosity reaches the selected gel threshold.
         """
     )
@@ -437,7 +446,12 @@ with tab7:
     """)
 
     st.latex(r"""
-    \alpha(t)=\alpha_0 e^{-\beta t}
+    \alpha(t)
+    =
+    \alpha_0
+    \left(\frac{RPM_{ref}}{RPM}\right)^{1/2}
+    \left(\frac{\eta_0}{\eta_{ref}}\right)^{1/2}
+    e^{-\beta t}
     """)
 
     st.latex(r"""
