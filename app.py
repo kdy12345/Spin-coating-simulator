@@ -101,13 +101,13 @@ def simulate_spin_coating(
     return df
 
 
-def calculate_radial_profile(final_thickness, R_mm, edge_bead_width, base_edge_bead):
+def calculate_radial_profile(thickness, R_mm, edge_bead_width, base_edge_bead):
     r = np.linspace(0, R_mm, 300)
 
     distance_from_edge = R_mm - r
     edge_shape = np.exp(-distance_from_edge / edge_bead_width)
 
-    h_r = final_thickness * (1 + base_edge_bead * edge_shape)
+    h_r = thickness * (1 + base_edge_bead * edge_shape)
 
     h_max = np.max(h_r)
     h_min = np.min(h_r)
@@ -169,11 +169,12 @@ if t_gel is None:
 else:
     st.info(f"Predicted gel time t_gel = {t_gel:.2f} s, based on η(t)=η₀e^(kt).")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "Model Comparison",
     "RPM Effect",
     "Viscosity Effect",
     "Evaporation Effect",
+    "Radial Evolution",
     "Radial Uniformity",
     "Data & Insight",
 ])
@@ -277,6 +278,46 @@ with tab4:
     )
 
 with tab5:
+    st.subheader("Radial Evolution of h(r,t)")
+
+    selected_time = st.slider(
+        "Select Time for Radial Profile (s)",
+        min_value=0.0,
+        max_value=float(t),
+        value=float(t),
+        step=float(dt),
+    )
+
+    idx = (df_meyer["Time (s)"] - selected_time).abs().idxmin()
+    selected_time_actual = df_meyer.loc[idx, "Time (s)"]
+    selected_thickness = df_meyer.loc[idx, "Thickness (μm)"]
+
+    r_t, h_rt, u_t, hmax_t, hmin_t, havg_t = calculate_radial_profile(
+        selected_thickness,
+        R_mm,
+        edge_bead_width,
+        base_edge_bead,
+    )
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(r_t, h_rt, color="red", label=f"h(r,t) at t = {selected_time_actual:.2f} s")
+    ax.axhline(havg_t, linestyle="--", label="Average thickness")
+    ax.set_xlabel("Radial Position r (mm)")
+    ax.set_ylabel("Film Thickness h(r,t) (μm)")
+    ax.grid(True)
+    ax.legend()
+    st.pyplot(fig)
+
+    st.write(f"Selected time: {selected_time_actual:.2f} s")
+    st.write(f"Average thickness at selected time: {havg_t:.4f} μm")
+    st.write(f"Radial uniformity at selected time: ±{u_t:.4f} %")
+
+    st.write(
+        "This tab visualizes the time-dependent radial thickness profile h(r,t). "
+        "Moving the time slider shows how the film becomes thinner over time while the edge bead profile remains visible near the wafer edge."
+    )
+
+with tab6:
     st.subheader("Final Radial Thickness Profile")
 
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -321,7 +362,7 @@ with tab5:
         "The wafer radius affects the radial profile because the edge bead region has a finite physical width."
     )
 
-with tab6:
+with tab7:
     st.subheader("Simulation Data")
 
     st.dataframe(df_meyer)
@@ -335,6 +376,7 @@ with tab6:
         - Higher solvent evaporation rate directly decreases the film thickness.
         - In the early stage, rotation-driven thinning is dominant.
         - As solvent evaporates and viscosity increases, radial flow weakens and evaporation becomes more important.
+        - Radial evolution h(r,t) is visualized using a time slider.
         - Radial uniformity is evaluated as ±(h_max - h_min)/(2h_avg) × 100.
         - Wafer radius affects the radial profile because the edge bead region has a fixed physical width.
         - The predicted gel time indicates when viscosity reaches the selected gel threshold.
