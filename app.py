@@ -26,14 +26,14 @@ st.sidebar.markdown("---")
 st.sidebar.header("Radial Profile / Uniformity")
 
 R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
-edge_bead_strength = st.sidebar.slider("Base Edge Bead Strength α", 0.0, 0.10, 0.02, 0.005)
+edge_bead_strength = st.sidebar.slider("Base Edge Bead Strength α", 0.0, 0.10, 0.015, 0.005)
 edge_exponent = st.sidebar.slider("Edge Bead Exponent n", 2, 12, 6, 1)
 rpm_sensitivity = st.sidebar.slider("RPM Sensitivity m", 0.0, 2.0, 0.5, 0.1)
 uniformity_spec = st.sidebar.number_input("Uniformity Spec (%)", value=2.0, min_value=0.1)
 mu_gel = st.sidebar.number_input("Gel Viscosity μ_gel (Pa·s)", value=0.30, min_value=0.001)
 
 st.sidebar.markdown("---")
-st.sidebar.write("Parameter Study")
+st.sidebar.header("Parameter Study")
 
 rpm_values = st.sidebar.multiselect(
     "RPM cases",
@@ -109,13 +109,13 @@ def calculate_effective_alpha(alpha, rpm, E, rpm_ref=3000, m=0.5):
     if rpm == 0:
         return alpha
     
-    # 1. [물리 수정] 낮은 RPM일 때 원심력 부족으로 테두리가 뭉치는 두께 (Edge Bead)
+    # 1. 낮은 RPM 일 때 원심력 부족으로 인한 Edge Bead 현상
     low_rpm_bead = alpha * (rpm_ref / rpm) ** m
     
-    # 2. [물리 수정] 높은 RPM일 때 강한 기류마찰과 과도한 증발(E)로 가장자리가 마르고 불균일해지는 패널티 추가
-    high_rpm_dryness = 0.04 * (rpm / rpm_ref) ** 1.5 * (E / 0.01)
+    # 2. 높은 RPM 일 때 과도한 증발 패널티
+    # [수정된 밸런스]: 사용자의 기본 alpha 설정값에 비례하도록 연동하여 스펙 도달이 가능하도록 조정
+    high_rpm_dryness = 0.25 * alpha * (rpm / rpm_ref) ** 1.5 * (E / 0.01)
     
-    # 두 상반된 물리 현상을 결합하여 현실적인 'U자형 균일도 변화 곡선'을 유도합니다.
     return low_rpm_bead + high_rpm_dryness
 
 
@@ -130,7 +130,7 @@ def calculate_radial_profile(final_thickness, R_mm, alpha_eff, n):
     h_avg = np.mean(h_r)
 
     if h_avg > 0:
-        # [공식 수정] 과제 스펙(±2%) 계산을 위해 분모에 2를 곱해 분산 편차값으로 도출
+        # 과제 스펙(±2%) 계산용 표준 공식 적용 (분모 2*평균값)
         uniformity = (h_max - h_min) / (2 * h_avg) * 100
     else:
         uniformity = 0
@@ -164,7 +164,6 @@ df_meyer = simulate_spin_coating(
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
-# 수정된 effective_alpha 함수 호출 (E 인자 추가)
 alpha_eff = calculate_effective_alpha(
     edge_bead_strength,
     rpm,
@@ -190,7 +189,7 @@ col3.metric("Thickness Difference", f"{final_meyer - final_ebp:.3f} μm")
 
 col4, col5, col6 = st.columns(3)
 col4.metric("Radial Uniformity", f"{uniformity:.3f} %")
-col5.metric("Effective Edge Bead/Dryness Strength", f"{alpha_eff:.4f}")
+col5.metric("Effective Defect Strength (α_eff)", f"{alpha_eff:.4f}")
 col6.metric("Uniformity Result", "PASS" if uniformity_pass else "FAIL")
 
 if t_gel is None:
@@ -347,7 +346,7 @@ with tab6:
 
     st.markdown(
         """
-        - **RPM과 균일도의 시소관계**: RPM이 너무 낮으면 가장자리가 두껍게 뭉치는 Edge Bead 불량이 발생합니다. 반대로 RPM이 지나치게 높으면 용매가 불균일하게 날아가 표면이 마르는 융기/건조(Dryness) 불량이 추가되어 다시 균일도가 악화됩니다.
+        - **RPM과 균일도의 포물선 관계**: RPM이 과도하게 낮으면 가장자리가 두껍게 쌓이는 Edge Bead 불량이 발생하고, 반대로 너무 높으면 기류 변동 및 급격한 표면 증발에 의한 건조성 결함이 심화됩니다. 따라서 두 힘이 균형을 이루는 중간 지점을 포착해야 균일도가 최적화됩니다.
         - Higher RPM increases centrifugal thinning, so the film thickness decreases faster.
         - Higher initial viscosity suppresses radial flow, resulting in a thicker final film.
         - Higher evaporation rate directly decreases the film thickness.
@@ -392,7 +391,7 @@ with tab6:
     st.latex(r"""
     \alpha_{eff}
     =
-    \alpha \left( \frac{RPM_{ref}}{RPM} \right)^m + 0.04 \left( \frac{RPM}{RPM_{ref}} \right)^{1.5} \left( \frac{E}{0.01} \right)
+    \alpha \left( \frac{RPM_{ref}}{RPM} \right)^m + 0.25 \cdot \alpha \cdot \left( \frac{RPM}{RPM_{ref}} \right)^{1.5} \left( \frac{E}{0.01} \right)
     """)
 
     st.latex(r"""
