@@ -106,7 +106,10 @@ def simulate_spin_coating(
 
 
 def calculate_effective_alpha(alpha, rpm, rpm_ref=3000, m=0.5):
-    return alpha * (rpm / rpm_ref) ** m
+    # 수정: RPM이 낮을수록 원심력이 약해져 가장자리 뭉침(Edge Bead)이 심해지도록 변경
+    if rpm == 0:
+        return alpha
+    return alpha * (rpm_ref / rpm) ** m
 
 
 def calculate_radial_profile(final_thickness, R_mm, alpha_eff, n):
@@ -120,7 +123,8 @@ def calculate_radial_profile(final_thickness, R_mm, alpha_eff, n):
     h_avg = np.mean(h_r)
 
     if h_avg > 0:
-        uniformity = (h_max - h_min) / h_avg * 100
+        # 수정: 과제 사진 스펙(±2%)에 맞도록 분모에 2를 곱해 변동 편차로 계산
+        uniformity = (h_max - h_min) / (2 * h_avg) * 100
     else:
         uniformity = 0
 
@@ -305,14 +309,14 @@ with tab5:
             "Result"
         ],
         "Value": [
-            f"{h_min:.4f} μm",
-            f"{h_max:.4f} μm",
-            f"{h_avg:.4f} μm",
-            f"{uniformity:.4f} %",
-            f"±{uniformity_spec:.2f} %",
-            f"{edge_bead_strength:.4f}",
-            f"{alpha_eff:.4f}",
-            f"{rpm_sensitivity:.2f}",
+            "f{h_min:.4f} μm",
+            "f{h_max:.4f} μm",
+            "f{h_avg:.4f} μm",
+            "f{uniformity:.4f} %",
+            "±f{uniformity_spec:.2f} %",
+            "f{edge_bead_strength:.4f}",
+            "f{alpha_eff:.4f}",
+            "f{rpm_sensitivity:.2f}",
             "PASS" if uniformity_pass else "FAIL"
         ]
     })
@@ -322,7 +326,7 @@ with tab5:
 
     st.write(
         "The radial profile is a simplified edge-bead representation. "
-        "In this model, the effective edge bead strength increases with RPM, "
+        "In this model, the effective edge bead strength decreases with RPM, "
         "so radial uniformity changes when spin speed is adjusted."
     )
 
@@ -341,7 +345,7 @@ with tab6:
         - In the early stage, rotation-driven thinning is dominant.
         - As solvent evaporates and viscosity increases, radial flow weakens and evaporation becomes more important.
         - The radial profile provides a simplified estimate of final thickness uniformity.
-        - The effective edge bead strength is adjusted by RPM, so radial uniformity changes with spin speed.
+        - The effective edge bead strength decreases as RPM increases, representing realistic centrifugal shearing.
         - The predicted gel time indicates when viscosity reaches the selected gel threshold.
         """
     )
@@ -383,13 +387,13 @@ with tab6:
     =
     \alpha
     \left(
-    \frac{RPM}{RPM_{ref}}
+    \frac{RPM_{ref}}{RPM}
     \right)^m
     """)
 
     st.latex(r"""
-    Uniformity
+    Uniformity (\%)
     =
-    \frac{h_{max}-h_{min}}{h_{avg}}
+    \pm \frac{h_{max}-h_{min}}{2 \times h_{avg}}
     \times 100
     """)
