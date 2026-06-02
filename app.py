@@ -17,7 +17,7 @@ rpm = st.sidebar.slider("RPM", 500, 3000, 3000, 100)
 h_0 = st.sidebar.number_input("Initial Thickness h₀ (μm)", value=100.0, min_value=1.0)
 mu_0 = st.sidebar.number_input("Initial Viscosity μ₀ (Pa·s)", value=0.05, min_value=0.001)
 rho = st.sidebar.number_input("Density ρ (kg/m³)", value=1000.0, min_value=1.0)
-C_evap = st.sidebar.number_input("Evaporation Coefficient C", value=0.10, min_value=0.0)
+C_evap = st.sidebar.number_input("Evaporation Coefficient C", value=0.001, min_value=0.0)
 k = st.sidebar.number_input("Viscosity Growth Rate k (1/s)", value=0.03, min_value=0.0)
 t = st.sidebar.number_input("Simulation Time (s)", value=60.0, min_value=1.0)
 dt = st.sidebar.number_input("Time Step Δt (s)", value=0.05, min_value=0.001)
@@ -55,8 +55,8 @@ mu_values = st.sidebar.multiselect(
 
 C_values = st.sidebar.multiselect(
     "Evaporation coefficient cases C",
-    [0.0, 0.05, 0.10, 0.15, 0.20],
-    default=[0.05, 0.10, 0.15],
+    [0.0, 0.0005, 0.001, 0.002, 0.003],
+    default=[0.0, 0.001, 0.002],
 )
 
 # -----------------------------
