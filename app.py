@@ -24,7 +24,8 @@ st.sidebar.header("Radial Profile / Uniformity")
 
 R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
 edge_bead_width = st.sidebar.number_input("Edge Bead Width w_edge (mm)", value=5.0, min_value=0.1)
-base_edge_bead = st.sidebar.slider("Base Edge Bead Strength α", 0.0, 0.10, 0.01, 0.005)
+base_edge_bead = st.sidebar.slider("Initial Edge Bead Strength α₀", 0.0, 0.30, 0.10, 0.01)
+edge_relaxation_rate = st.sidebar.number_input("Edge Bead Relaxation Rate β (1/s)", value=0.04, min_value=0.0)
 
 uniformity_spec = st.sidebar.number_input("Uniformity Spec (±%)", value=2.0, min_value=0.1)
 eta_gel = st.sidebar.number_input("Gel Viscosity η_gel (Pa·s)", value=0.30, min_value=0.001)
@@ -101,13 +102,17 @@ def simulate_spin_coating(
     return df
 
 
-def calculate_radial_profile(thickness, R_mm, edge_bead_width, base_edge_bead):
+def calculate_alpha_t(alpha_0, beta, time_value):
+    return alpha_0 * np.exp(-beta * time_value)
+
+
+def calculate_radial_profile(thickness, R_mm, edge_bead_width, alpha_t):
     r = np.linspace(0, R_mm, 300)
 
     distance_from_edge = R_mm - r
     edge_shape = np.exp(-distance_from_edge / edge_bead_width)
 
-    h_r = thickness * (1 + base_edge_bead * edge_shape)
+    h_r = thickness * (1 + alpha_t * edge_shape)
 
     h_max = np.max(h_r)
     h_min = np.min(h_r)
@@ -144,11 +149,13 @@ df_meyer = simulate_spin_coating(
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
+alpha_final = calculate_alpha_t(base_edge_bead, edge_relaxation_rate, t)
+
 r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile(
     final_meyer,
     R_mm,
     edge_bead_width,
-    base_edge_bead,
+    alpha_final,
 )
 
 t_gel = calculate_t_gel(eta_0, eta_gel, k)
@@ -292,11 +299,17 @@ with tab5:
     selected_time_actual = df_meyer.loc[idx, "Time (s)"]
     selected_thickness = df_meyer.loc[idx, "Thickness (μm)"]
 
+    alpha_selected = calculate_alpha_t(
+        base_edge_bead,
+        edge_relaxation_rate,
+        selected_time_actual,
+    )
+
     r_t, h_rt, u_t, hmax_t, hmin_t, havg_t = calculate_radial_profile(
         selected_thickness,
         R_mm,
         edge_bead_width,
-        base_edge_bead,
+        alpha_selected,
     )
 
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -308,13 +321,15 @@ with tab5:
     ax.legend()
     st.pyplot(fig)
 
-    st.write(f"Selected time: {selected_time_actual:.2f} s")
-    st.write(f"Average thickness at selected time: {havg_t:.4f} μm")
-    st.write(f"Radial uniformity at selected time: ±{u_t:.4f} %")
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("Selected Time", f"{selected_time_actual:.2f} s")
+    col_b.metric("Edge Bead Strength α(t)", f"{alpha_selected:.4f}")
+    col_c.metric("Radial Uniformity", f"±{u_t:.4f} %")
 
     st.write(
         "This tab visualizes the time-dependent radial thickness profile h(r,t). "
-        "Moving the time slider shows how the film becomes thinner over time while the edge bead profile remains visible near the wafer edge."
+        "The edge bead strength decreases with time according to α(t)=α₀exp(−βt), "
+        "so the radial profile becomes flatter as spin coating proceeds."
     )
 
 with tab6:
@@ -338,7 +353,9 @@ with tab6:
             "Uniformity Spec",
             "Wafer Radius",
             "Edge Bead Width",
-            "Base Edge Bead Strength",
+            "Initial Edge Bead Strength",
+            "Final Edge Bead Strength",
+            "Edge Bead Relaxation Rate",
             "Result",
         ],
         "Value": [
@@ -350,6 +367,8 @@ with tab6:
             f"{R_mm:.2f} mm",
             f"{edge_bead_width:.2f} mm",
             f"{base_edge_bead:.4f}",
+            f"{alpha_final:.4f}",
+            f"{edge_relaxation_rate:.4f} 1/s",
             "PASS" if uniformity_pass else "FAIL",
         ],
     })
@@ -377,6 +396,7 @@ with tab7:
         - In the early stage, rotation-driven thinning is dominant.
         - As solvent evaporates and viscosity increases, radial flow weakens and evaporation becomes more important.
         - Radial evolution h(r,t) is visualized using a time slider.
+        - Edge bead strength decreases with time using α(t)=α₀exp(−βt).
         - Radial uniformity is evaluated as ±(h_max - h_min)/(2h_avg) × 100.
         - Wafer radius affects the radial profile because the edge bead region has a fixed physical width.
         - The predicted gel time indicates when viscosity reaches the selected gel threshold.
@@ -411,9 +431,13 @@ with tab7:
     =
     h(t)
     \left[
-    1+\alpha
+    1+\alpha(t)
     \exp\left(-\frac{R-r}{w_{edge}}\right)
     \right]
+    """)
+
+    st.latex(r"""
+    \alpha(t)=\alpha_0 e^{-\beta t}
     """)
 
     st.latex(r"""
