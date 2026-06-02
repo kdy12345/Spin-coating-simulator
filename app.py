@@ -26,12 +26,6 @@ R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
 edge_bead_width = st.sidebar.number_input("Edge Bead Width w_edge (mm)", value=5.0, min_value=0.1)
 base_edge_bead = st.sidebar.slider("Base Edge Bead Strength α", 0.0, 0.10, 0.01, 0.005)
 
-rpm_opt = st.sidebar.number_input("Optimal RPM for Uniformity", value=2000.0, min_value=500.0)
-eta_opt = st.sidebar.number_input("Optimal Viscosity for Uniformity η_opt (Pa·s)", value=0.05, min_value=0.001)
-
-rpm_penalty_strength = st.sidebar.slider("RPM Uniformity Sensitivity", 0.0, 0.10, 0.03, 0.005)
-eta_penalty_strength = st.sidebar.slider("Viscosity Uniformity Sensitivity", 0.0, 0.10, 0.03, 0.005)
-
 uniformity_spec = st.sidebar.number_input("Uniformity Spec (±%)", value=2.0, min_value=0.1)
 eta_gel = st.sidebar.number_input("Gel Viscosity η_gel (Pa·s)", value=0.30, min_value=0.001)
 
@@ -107,30 +101,13 @@ def simulate_spin_coating(
     return df
 
 
-def calculate_effective_edge_strength(
-    base_alpha,
-    rpm,
-    rpm_opt,
-    rpm_penalty_strength,
-    eta_0,
-    eta_opt,
-    eta_penalty_strength,
-):
-    rpm_penalty = rpm_penalty_strength * ((rpm - rpm_opt) / rpm_opt) ** 2
-    eta_penalty = eta_penalty_strength * ((eta_0 - eta_opt) / eta_opt) ** 2
-
-    alpha_eff = base_alpha + rpm_penalty + eta_penalty
-
-    return alpha_eff, rpm_penalty, eta_penalty
-
-
-def calculate_radial_profile(final_thickness, R_mm, edge_bead_width, alpha_eff):
+def calculate_radial_profile(final_thickness, R_mm, edge_bead_width, base_edge_bead):
     r = np.linspace(0, R_mm, 300)
 
     distance_from_edge = R_mm - r
     edge_shape = np.exp(-distance_from_edge / edge_bead_width)
 
-    h_r = final_thickness * (1 + alpha_eff * edge_shape)
+    h_r = final_thickness * (1 + base_edge_bead * edge_shape)
 
     h_max = np.max(h_r)
     h_min = np.min(h_r)
@@ -167,21 +144,11 @@ df_meyer = simulate_spin_coating(
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
-alpha_eff, rpm_penalty, eta_penalty = calculate_effective_edge_strength(
-    base_edge_bead,
-    rpm,
-    rpm_opt,
-    rpm_penalty_strength,
-    eta_0,
-    eta_opt,
-    eta_penalty_strength,
-)
-
 r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile(
     final_meyer,
     R_mm,
     edge_bead_width,
-    alpha_eff,
+    base_edge_bead,
 )
 
 t_gel = calculate_t_gel(eta_0, eta_gel, k)
@@ -331,9 +298,6 @@ with tab5:
             "Wafer Radius",
             "Edge Bead Width",
             "Base Edge Bead Strength",
-            "RPM Penalty",
-            "Viscosity Penalty",
-            "Effective Edge Bead Strength",
             "Result",
         ],
         "Value": [
@@ -345,9 +309,6 @@ with tab5:
             f"{R_mm:.2f} mm",
             f"{edge_bead_width:.2f} mm",
             f"{base_edge_bead:.4f}",
-            f"{rpm_penalty:.4f}",
-            f"{eta_penalty:.4f}",
-            f"{alpha_eff:.4f}",
             "PASS" if uniformity_pass else "FAIL",
         ],
     })
@@ -408,19 +369,9 @@ with tab6:
     =
     h(t)
     \left[
-    1+\alpha_{eff}
+    1+\alpha
     \exp\left(-\frac{R-r}{w_{edge}}\right)
     \right]
-    """)
-
-    st.latex(r"""
-    \alpha_{eff}
-    =
-    \alpha
-    +
-    C_{rpm}\left(\frac{RPM-RPM_{opt}}{RPM_{opt}}\right)^2
-    +
-    C_{\eta}\left(\frac{\eta_0-\eta_{opt}}{\eta_{opt}}\right)^2
     """)
 
     st.latex(r"""
