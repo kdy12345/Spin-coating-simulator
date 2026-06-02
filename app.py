@@ -135,6 +135,44 @@ def calculate_t_gel(eta_0, eta_gel, k):
     return np.log(eta_gel / eta_0) / k
 
 
+def evaluate_condition(rpm_case, eta_case):
+    df = simulate_spin_coating(
+        rpm_case, h_0, eta_case, rho, E, k, t, dt,
+        use_evaporation=True,
+        use_viscosity_growth=True,
+    )
+
+    final_thickness = df["Thickness (μm)"].iloc[-1]
+
+    alpha_case = calculate_alpha_t(
+        base_edge_bead,
+        edge_relaxation_rate,
+        t,
+        rpm_case,
+        eta_case,
+    )
+
+    _, _, uniformity_case, _, _, _ = calculate_radial_profile(
+        final_thickness,
+        R_mm,
+        edge_bead_width,
+        alpha_case,
+    )
+
+    omega_case = rpm_case * 2 * np.pi / 60
+    result = "PASS" if uniformity_case <= uniformity_spec else "FAIL"
+
+    return {
+        "RPM": rpm_case,
+        "ω (rad/s)": omega_case,
+        "η₀ (Pa·s)": eta_case,
+        "Final Thickness (μm)": final_thickness,
+        "Edge Bead Strength α(t_end)": alpha_case,
+        "Radial Uniformity (±%)": uniformity_case,
+        "Result": result,
+    }
+
+
 df_ebp = simulate_spin_coating(
     rpm, h_0, eta_0, rho, 0.0, 0.0, t, dt,
     use_evaporation=False,
@@ -183,13 +221,14 @@ if t_gel is None:
 else:
     st.info(f"Predicted gel time t_gel = {t_gel:.2f} s, based on η(t)=η₀e^(kt).")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "Model Comparison",
     "RPM Effect",
     "Viscosity Effect",
     "Evaporation Effect",
     "Radial Evolution",
     "Radial Uniformity",
+    "Challenge Mode",
     "Data & Insight",
 ])
 
@@ -337,8 +376,7 @@ with tab5:
 
     st.write(
         "This tab visualizes the time-dependent radial thickness profile h(r,t). "
-        "The edge bead strength changes with RPM, initial viscosity, and time. "
-        "Higher RPM reduces the edge bead factor, while higher viscosity increases it."
+        "The edge bead strength changes with RPM, initial viscosity, and time."
     )
 
 with tab6:
@@ -385,12 +423,63 @@ with tab6:
     st.subheader("Uniformity Evaluation")
     st.dataframe(uniformity_df)
 
+with tab7:
+    st.subheader("Challenge Mode: Find RPM and η₀ Conditions for ±2% Uniformity")
+
     st.write(
-        "Radial uniformity is evaluated using ±(h_max - h_min)/(2h_avg) × 100. "
-        "The wafer radius affects the radial profile because the edge bead region has a finite physical width."
+        "This mode searches RPM and initial viscosity η₀ combinations that satisfy "
+        "the prescribed radial uniformity specification."
     )
 
-with tab7:
+    challenge_rpm_values = st.multiselect(
+        "Challenge RPM candidates",
+        [500, 1000, 1500, 2000, 2500, 3000],
+        default=[500, 1000, 1500, 2000, 2500, 3000],
+    )
+
+    challenge_eta_values = st.multiselect(
+        "Challenge η₀ candidates (Pa·s)",
+        [0.03, 0.05, 0.10, 0.20],
+        default=[0.03, 0.05, 0.10, 0.20],
+    )
+
+    challenge_results = []
+
+    for r_case in challenge_rpm_values:
+        for eta_case in challenge_eta_values:
+            challenge_results.append(evaluate_condition(r_case, eta_case))
+
+    challenge_df = pd.DataFrame(challenge_results)
+
+    if len(challenge_df) > 0:
+        st.subheader("All Tested Conditions")
+        st.dataframe(challenge_df)
+
+        feasible_df = challenge_df[challenge_df["Result"] == "PASS"].copy()
+
+        st.subheader("Feasible Conditions Satisfying Uniformity Spec")
+
+        if len(feasible_df) > 0:
+            feasible_df = feasible_df.sort_values(
+                by=["Radial Uniformity (±%)", "Final Thickness (μm)"],
+                ascending=[True, False],
+            )
+            st.dataframe(feasible_df)
+
+            best = feasible_df.iloc[0]
+
+            st.success(
+                f"Best condition: RPM = {best['RPM']}, "
+                f"ω = {best['ω (rad/s)']:.2f} rad/s, "
+                f"η₀ = {best['η₀ (Pa·s)']:.3f} Pa·s, "
+                f"Uniformity = ±{best['Radial Uniformity (±%)']:.3f}%"
+            )
+        else:
+            st.warning("No tested condition satisfies the uniformity specification.")
+    else:
+        st.warning("Select at least one RPM and one η₀ candidate.")
+
+with tab8:
     st.subheader("Simulation Data")
 
     st.dataframe(df_meyer)
@@ -404,9 +493,8 @@ with tab7:
         - Higher initial viscosity suppresses radial flow, resulting in a thicker final film.
         - Higher initial viscosity increases the simplified edge bead factor.
         - Higher solvent evaporation rate directly decreases the film thickness.
-        - In the early stage, rotation-driven thinning is dominant.
-        - As solvent evaporates and viscosity increases, radial flow weakens and evaporation becomes more important.
         - Radial evolution h(r,t) is visualized using a time slider.
+        - Challenge Mode searches RPM and η₀ combinations satisfying the ±2% uniformity spec.
         - Radial uniformity is evaluated as ±(h_max - h_min)/(2h_avg) × 100.
         - The predicted gel time indicates when viscosity reaches the selected gel threshold.
         """
