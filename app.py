@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="Spin Coating Simulator", layout="wide")
 
 st.title("Spin Coating Simulator")
-st.caption("EBP Model + Meyerhofer-type evaporation and viscosity increase")
+st.caption("EBP Model + Meyerhofer model evaporation and viscosity increase")
 
 # -----------------------------
 # Sidebar input
@@ -24,6 +24,7 @@ dt = st.sidebar.number_input("Time Step Δt (s)", value=0.05, min_value=0.001)
 
 st.sidebar.markdown("---")
 st.sidebar.write("Parameter Study")
+
 rpm_values = st.sidebar.multiselect(
     "RPM cases",
     [500, 1000, 1500, 2000, 2500, 3000],
@@ -45,7 +46,18 @@ E_values = st.sidebar.multiselect(
 # -----------------------------
 # Core functions
 # -----------------------------
-def simulate_spin_coating(rpm, h_0, mu0, rho, E, k, t, dt, use_evaporation=True, use_viscosity_growth=True):
+def simulate_spin_coating(
+    rpm,
+    h_0,
+    mu_0,
+    rho,
+    E,
+    k,
+    t,
+    dt,
+    use_evaporation=True,
+    use_viscosity_growth=True,
+):
     omega = rpm * 2 * np.pi / 60
     time = np.arange(0, t + dt, dt)
 
@@ -55,7 +67,7 @@ def simulate_spin_coating(rpm, h_0, mu0, rho, E, k, t, dt, use_evaporation=True,
     mu_arr = np.zeros_like(time)
     dhdt_arr = np.zeros_like(time)
 
-    E = E * 1e-6 if use_evaporation else 0.0
+    E_m_s = E * 1e-6 if use_evaporation else 0.0
 
     for i in range(len(time) - 1):
         if use_viscosity_growth:
@@ -65,7 +77,7 @@ def simulate_spin_coating(rpm, h_0, mu0, rho, E, k, t, dt, use_evaporation=True,
 
         mu_arr[i] = mu
 
-        dhdt = -(2 * rho * omega**2 / (3 * mu)) * h_m[i]**3 - E
+        dhdt = -(2 * rho * omega**2 / (3 * mu)) * h_m[i]**3 - E_m_s
         dhdt_arr[i] = dhdt
 
         h_m[i + 1] = max(h_m[i] + dhdt * dt, 0)
@@ -114,7 +126,7 @@ final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
 col1, col2, col3 = st.columns(3)
 col1.metric("Final Thickness: EBP", f"{final_ebp:.3f} μm")
-col2.metric("Final Thickness: Meyerhofer-type", f"{final_meyer:.3f} μm")
+col2.metric("Final Thickness: Meyerhofer model", f"{final_meyer:.3f} μm")
 col3.metric("Thickness Difference", f"{final_meyer - final_ebp:.3f} μm")
 
 # -----------------------------
@@ -129,11 +141,20 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 with tab1:
-    st.subheader("EBP Model vs Meyerhofer-type Model")
+    st.subheader("EBP Model vs Meyerhofer Model")
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(df_ebp["Time (s)"], df_ebp["Thickness (μm)"], label="EBP: no evaporation, constant viscosity")
-    ax.plot(df_meyer["Time (s)"], df_meyer["Thickness (μm)"], label="Meyerhofer-type: evaporation + μ(t)")
+    ax.plot(
+        df_ebp["Time (s)"],
+        df_ebp["Thickness (μm)"],
+        label="EBP: no evaporation, constant viscosity"
+    )
+    ax.plot(
+        df_meyer["Time (s)"],
+        df_meyer["Thickness (μm)"],
+        label="Meyerhofer model: evaporation + μ(t)",
+        color="red"
+    )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Film Thickness (μm)")
     ax.grid(True)
@@ -142,7 +163,7 @@ with tab1:
 
     st.write(
         "The EBP model considers centrifugal thinning only. "
-        "The Meyerhofer-type model includes solvent evaporation and viscosity increase."
+        "The Meyerhofer model includes solvent evaporation and viscosity increase."
     )
 
 with tab2:
