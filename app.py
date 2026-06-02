@@ -23,6 +23,15 @@ t = st.sidebar.number_input("Simulation Time (s)", value=60.0, min_value=1.0)
 dt = st.sidebar.number_input("Time Step Δt (s)", value=0.05, min_value=0.001)
 
 st.sidebar.markdown("---")
+st.sidebar.header("Radial Profile / Uniformity")
+
+R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
+edge_bead_strength = st.sidebar.slider("Edge Bead Strength α", 0.0, 0.10, 0.02, 0.005)
+edge_exponent = st.sidebar.slider("Edge Bead Exponent n", 2, 12, 6, 1)
+uniformity_spec = st.sidebar.number_input("Uniformity Spec (%)", value=2.0, min_value=0.1)
+mu_gel = st.sidebar.number_input("Gel Viscosity μ_gel (Pa·s)", value=0.30, min_value=0.001)
+
+st.sidebar.markdown("---")
 st.sidebar.write("Parameter Study")
 
 rpm_values = st.sidebar.multiselect(
@@ -95,6 +104,32 @@ def simulate_spin_coating(
     return df
 
 
+def calculate_radial_profile(final_thickness, R_mm, alpha, n):
+    r = np.linspace(0, R_mm, 200)
+    normalized_r = r / R_mm
+
+    h_r = final_thickness * (1 + alpha * normalized_r**n)
+
+    h_max = np.max(h_r)
+    h_min = np.min(h_r)
+    h_avg = np.mean(h_r)
+
+    if h_avg > 0:
+        uniformity = (h_max - h_min) / h_avg * 100
+    else:
+        uniformity = 0
+
+    return r, h_r, uniformity, h_max, h_min, h_avg
+
+
+def calculate_t_gel(mu_0, mu_gel, k):
+    if k <= 0:
+        return None
+    if mu_gel <= mu_0:
+        return 0
+    return np.log(mu_gel / mu_0) / k
+
+
 # -----------------------------
 # Main simulation
 # -----------------------------
@@ -113,19 +148,40 @@ df_meyer = simulate_spin_coating(
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
+r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile(
+    final_meyer,
+    R_mm,
+    edge_bead_strength,
+    edge_exponent
+)
+
+t_gel = calculate_t_gel(mu_0, mu_gel, k)
+uniformity_pass = uniformity <= uniformity_spec
+
 col1, col2, col3 = st.columns(3)
 col1.metric("Final Thickness: EBP", f"{final_ebp:.3f} μm")
 col2.metric("Final Thickness: Meyerhofer Model", f"{final_meyer:.3f} μm")
 col3.metric("Thickness Difference", f"{final_meyer - final_ebp:.3f} μm")
 
+col4, col5, col6 = st.columns(3)
+col4.metric("Radial Uniformity", f"{uniformity:.3f} %")
+col5.metric("Uniformity Spec", f"±{uniformity_spec:.2f} %")
+col6.metric("Uniformity Result", "PASS" if uniformity_pass else "FAIL")
+
+if t_gel is None:
+    st.info("t_gel is not defined because k = 0. Viscosity does not increase with time.")
+else:
+    st.info(f"Predicted gel time t_gel = {t_gel:.2f} s, based on μ(t)=μ₀e^(kt).")
+
 # -----------------------------
 # Tabs
 # -----------------------------
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Model Comparison",
     "RPM Effect",
     "Viscosity Effect",
     "Evaporation Effect",
+    "Radial Uniformity",
     "Data & Insight"
 ])
 
@@ -213,6 +269,52 @@ with tab4:
     st.dataframe(pd.DataFrame(summary, columns=["Evaporation Rate (μm/s)", "Final Thickness (μm)"]))
 
 with tab5:
+    st.subheader("Final Radial Thickness Profile")
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(r_profile, h_profile, color="red", label="Final radial thickness")
+    ax.axhline(h_avg, linestyle="--", label="Average thickness")
+    ax.set_xlabel("Radial Position r (mm)")
+    ax.set_ylabel("Final Film Thickness h(r) (μm)")
+    ax.grid(True)
+    ax.legend()
+    st.pyplot(fig)
+
+    profile_df = pd.DataFrame({
+        "Radial Position r (mm)": r_profile,
+        "Final Thickness h(r) (μm)": h_profile,
+    })
+
+    st.subheader("Uniformity Evaluation")
+
+    uniformity_df = pd.DataFrame({
+        "Metric": [
+            "Minimum Thickness",
+            "Maximum Thickness",
+            "Average Thickness",
+            "Radial Uniformity",
+            "Uniformity Spec",
+            "Result"
+        ],
+        "Value": [
+            f"{h_min:.4f} μm",
+            f"{h_max:.4f} μm",
+            f"{h_avg:.4f} μm",
+            f"{uniformity:.4f} %",
+            f"±{uniformity_spec:.2f} %",
+            "PASS" if uniformity_pass else "FAIL"
+        ]
+    })
+
+    st.dataframe(uniformity_df)
+
+    st.write(
+        "The radial profile is a simplified edge-bead representation. "
+        "The center region is assumed to follow the Meyerhofer Model thickness, "
+        "while the wafer edge becomes slightly thicker according to the selected edge bead strength."
+    )
+
+with tab6:
     st.subheader("Simulation Data")
 
     st.dataframe(df_meyer)
@@ -226,6 +328,8 @@ with tab5:
         - Higher evaporation rate directly decreases the film thickness.
         - In the early stage, rotation-driven thinning is dominant.
         - As solvent evaporates and viscosity increases, radial flow weakens and evaporation becomes more important.
+        - The radial profile provides a simplified estimate of final thickness uniformity.
+        - The predicted gel time indicates when viscosity reaches the selected gel threshold.
         """
     )
 
@@ -241,4 +345,29 @@ with tab5:
 
     st.latex(r"""
     \mu(t)=\mu_0 e^{kt}
+    """)
+
+    st.latex(r"""
+    t_{gel}
+    =
+    \frac{1}{k}
+    \ln\left(\frac{\mu_{gel}}{\mu_0}\right)
+    """)
+
+    st.subheader("Simplified Radial Profile Used")
+
+    st.latex(r"""
+    h(r,t)
+    =
+    h(t)
+    \left[
+    1+\alpha\left(\frac{r}{R}\right)^n
+    \right]
+    """)
+
+    st.latex(r"""
+    Uniformity
+    =
+    \frac{h_{max}-h_{min}}{h_{avg}}
+    \times 100
     """)
