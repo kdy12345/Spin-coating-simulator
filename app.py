@@ -8,6 +8,9 @@ st.set_page_config(page_title="Spin Coating Simulator", layout="wide")
 st.title("Spin Coating Simulator")
 st.caption("EBP Model + Meyerhofer Model evaporation and viscosity increase")
 
+# Fixed evaporation coefficient
+C_EVAP = 0.001
+
 # -----------------------------
 # Sidebar input
 # -----------------------------
@@ -17,7 +20,6 @@ rpm = st.sidebar.slider("RPM", 500, 3000, 3000, 100)
 h_0 = st.sidebar.number_input("Initial Thickness h₀ (μm)", value=100.0, min_value=1.0)
 mu_0 = st.sidebar.number_input("Initial Viscosity μ₀ (Pa·s)", value=0.05, min_value=0.001)
 rho = st.sidebar.number_input("Density ρ (kg/m³)", value=1000.0, min_value=1.0)
-C_evap = st.sidebar.number_input("Evaporation Coefficient C", value=0.001, min_value=0.0,format="%.5f")
 k = st.sidebar.number_input("Viscosity Growth Rate k (1/s)", value=0.03, min_value=0.0)
 t = st.sidebar.number_input("Simulation Time (s)", value=60.0, min_value=1.0)
 dt = st.sidebar.number_input("Time Step Δt (s)", value=0.05, min_value=0.001)
@@ -53,18 +55,12 @@ mu_values = st.sidebar.multiselect(
     default=[0.03, 0.05, 0.10],
 )
 
-C_values = st.sidebar.multiselect(
-    "Evaporation coefficient cases C",
-    [0.0, 0.0005, 0.001, 0.002, 0.003],
-    default=[0.0, 0.001, 0.002],
-)
-
 # -----------------------------
 # Core functions
 # -----------------------------
-def calculate_evaporation_rate_um_s(rpm, C_evap):
+def calculate_evaporation_rate_um_s(rpm):
     omega = rpm * 2 * np.pi / 60
-    return C_evap * np.sqrt(omega)
+    return C_EVAP * np.sqrt(omega)
 
 
 def simulate_spin_coating(
@@ -72,7 +68,6 @@ def simulate_spin_coating(
     h_0,
     mu_0,
     rho,
-    C_evap,
     k,
     t,
     dt,
@@ -88,7 +83,7 @@ def simulate_spin_coating(
     mu_arr = np.zeros_like(time)
     dhdt_arr = np.zeros_like(time)
 
-    E_um_s = calculate_evaporation_rate_um_s(rpm, C_evap) if use_evaporation else 0.0
+    E_um_s = calculate_evaporation_rate_um_s(rpm) if use_evaporation else 0.0
     E_m_s = E_um_s * 1e-6
 
     for i in range(len(time) - 1):
@@ -165,20 +160,20 @@ def calculate_t_gel(mu_0, mu_gel, k):
 # Main simulation
 # -----------------------------
 df_ebp = simulate_spin_coating(
-    rpm, h_0, mu_0, rho, 0.0, 0.0, t, dt,
+    rpm, h_0, mu_0, rho, 0.0, t, dt,
     use_evaporation=False,
     use_viscosity_growth=False,
 )
 
 df_meyer = simulate_spin_coating(
-    rpm, h_0, mu_0, rho, C_evap, k, t, dt,
+    rpm, h_0, mu_0, rho, k, t, dt,
     use_evaporation=True,
     use_viscosity_growth=True,
 )
 
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
-E_current = calculate_evaporation_rate_um_s(rpm, C_evap)
+E_current = calculate_evaporation_rate_um_s(rpm)
 
 alpha_eff, rpm_penalty, mu_penalty = calculate_effective_edge_strength(
     base_edge_bead,
@@ -218,11 +213,10 @@ else:
 # -----------------------------
 # Tabs
 # -----------------------------
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Model Comparison",
     "RPM Effect",
     "Viscosity Effect",
-    "Evaporation Effect",
     "Radial Uniformity",
     "Data & Insight"
 ])
@@ -261,8 +255,8 @@ with tab2:
     summary = []
 
     for r in rpm_values:
-        df = simulate_spin_coating(r, h_0, mu_0, rho, C_evap, k, t, dt)
-        E_case = calculate_evaporation_rate_um_s(r, C_evap)
+        df = simulate_spin_coating(r, h_0, mu_0, rho, k, t, dt)
+        E_case = calculate_evaporation_rate_um_s(r)
         ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"{r} RPM")
         summary.append([r, E_case, df["Thickness (μm)"].iloc[-1]])
 
@@ -281,7 +275,7 @@ with tab3:
     summary = []
 
     for mu_case in mu_values:
-        df = simulate_spin_coating(rpm, h_0, mu_case, rho, C_evap, k, t, dt)
+        df = simulate_spin_coating(rpm, h_0, mu_case, rho, k, t, dt)
         ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"μ₀={mu_case} Pa·s")
         summary.append([mu_case, df["Thickness (μm)"].iloc[-1]])
 
@@ -294,26 +288,6 @@ with tab3:
     st.dataframe(pd.DataFrame(summary, columns=["Initial Viscosity (Pa·s)", "Final Thickness (μm)"]))
 
 with tab4:
-    st.subheader("Effect of Evaporation Coefficient on Meyerhofer Model")
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-    summary = []
-
-    for C_case in C_values:
-        df = simulate_spin_coating(rpm, h_0, mu_0, rho, C_case, k, t, dt)
-        E_case = calculate_evaporation_rate_um_s(rpm, C_case)
-        ax.plot(df["Time (s)"], df["Thickness (μm)"], label=f"C={C_case}")
-        summary.append([C_case, E_case, df["Thickness (μm)"].iloc[-1]])
-
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Film Thickness of Meyerhofer Model (μm)")
-    ax.grid(True)
-    ax.legend()
-    st.pyplot(fig)
-
-    st.dataframe(pd.DataFrame(summary, columns=["C", "E = C√ω (μm/s)", "Final Thickness (μm)"]))
-
-with tab5:
     st.subheader("Final Radial Thickness Profile")
 
     fig, ax = plt.subplots(figsize=(8, 5))
@@ -360,7 +334,7 @@ with tab5:
         "In this simplified model, uniformity worsens when RPM or viscosity is too far from its optimal value."
     )
 
-with tab6:
+with tab5:
     st.subheader("Simulation Data")
 
     st.dataframe(df_meyer)
@@ -372,7 +346,6 @@ with tab6:
         - Higher RPM increases centrifugal thinning, so the film thickness decreases faster.
         - The evaporation rate is modeled as E = C√ω, so evaporation also increases with spin speed.
         - Higher initial viscosity suppresses radial flow, resulting in a thicker final film.
-        - A larger evaporation coefficient C increases solvent loss and decreases film thickness.
         - In the early stage, rotation-driven thinning is dominant.
         - As solvent evaporates and viscosity increases, radial flow weakens and evaporation becomes more important.
         - Radial uniformity is evaluated as ±(h_max - h_min)/(2h_avg) × 100.
@@ -394,6 +367,10 @@ with tab6:
 
     st.latex(r"""
     E=C\sqrt{\omega}
+    """)
+
+    st.latex(r"""
+    C=0.001
     """)
 
     st.latex(r"""
