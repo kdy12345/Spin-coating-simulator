@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 st.set_page_config(page_title="Spin Coating Simulator", layout="wide")
 
 st.title("Spin Coating Simulator")
-st.caption("EBP Model + Meyerhofer model evaporation and viscosity increase")
+st.caption("EBP Model + Meyerhofer Model evaporation and viscosity increase")
 
 # -----------------------------
 # Sidebar input
@@ -95,17 +95,6 @@ def simulate_spin_coating(
     return df
 
 
-def plot_line(df, x, y, label=None):
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(df[x], df[y], label=label)
-    ax.set_xlabel(x)
-    ax.set_ylabel(y)
-    ax.grid(True)
-    if label:
-        ax.legend()
-    st.pyplot(fig)
-
-
 # -----------------------------
 # Main simulation
 # -----------------------------
@@ -126,7 +115,7 @@ final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
 col1, col2, col3 = st.columns(3)
 col1.metric("Final Thickness: EBP", f"{final_ebp:.3f} μm")
-col2.metric("Final Thickness: Meyerhofer model", f"{final_meyer:.3f} μm")
+col2.metric("Final Thickness: Meyerhofer Model", f"{final_meyer:.3f} μm")
 col3.metric("Thickness Difference", f"{final_meyer - final_ebp:.3f} μm")
 
 # -----------------------------
@@ -152,7 +141,7 @@ with tab1:
     ax.plot(
         df_meyer["Time (s)"],
         df_meyer["Thickness (μm)"],
-        label="Meyerhofer model: evaporation + μ(t)",
+        label="Meyerhofer Model: evaporation + μ(t)",
         color="red"
     )
     ax.set_xlabel("Time (s)")
@@ -162,12 +151,12 @@ with tab1:
     st.pyplot(fig)
 
     st.write(
-        "The EBP model considers centrifugal thinning only. "
-        "The Meyerhofer model includes solvent evaporation and viscosity increase."
+        "The EBP Model considers centrifugal thinning only. "
+        "The Meyerhofer Model includes solvent evaporation and viscosity increase."
     )
 
 with tab2:
-    st.subheader("Effect of Spin Speed")
+    st.subheader("Effect of Spin Speed on Meyerhofer Model")
 
     fig, ax = plt.subplots(figsize=(8, 5))
     summary = []
@@ -186,7 +175,7 @@ with tab2:
     st.dataframe(pd.DataFrame(summary, columns=["RPM", "Final Thickness (μm)"]))
 
 with tab3:
-    st.subheader("Effect of Initial Viscosity")
+    st.subheader("Effect of Initial Viscosity on Meyerhofer Model")
 
     fig, ax = plt.subplots(figsize=(8, 5))
     summary = []
@@ -205,7 +194,7 @@ with tab3:
     st.dataframe(pd.DataFrame(summary, columns=["Initial Viscosity (Pa·s)", "Final Thickness (μm)"]))
 
 with tab4:
-    st.subheader("Effect of Evaporation Rate")
+    st.subheader("Effect of Evaporation Rate on Meyerhofer Model")
 
     fig, ax = plt.subplots(figsize=(8, 5))
     summary = []
