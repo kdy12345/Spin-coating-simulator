@@ -8,6 +8,9 @@ st.set_page_config(page_title="Spin Coating Simulator", layout="wide")
 st.title("Spin Coating Simulator")
 st.caption("EBP Model + Meyerhofer Model evaporation and viscosity increase")
 
+# -----------------------------
+# Sidebar input
+# -----------------------------
 st.sidebar.header("Input Parameters")
 
 rpm = st.sidebar.slider("RPM", 500, 3000, 3000, 100)
@@ -23,7 +26,7 @@ st.sidebar.markdown("---")
 st.sidebar.header("Radial Profile / Uniformity")
 
 R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
-edge_bead_width = st.sidebar.number_input("Edge Bead Width (mm)", value=5.0, min_value=0.1)
+edge_bead_width = st.sidebar.number_input("Edge Bead Width w_edge (mm)", value=5.0, min_value=0.1)
 base_edge_bead = st.sidebar.slider("Base Edge Bead Strength α", 0.0, 0.10, 0.01, 0.005)
 
 rpm_opt = st.sidebar.number_input("Optimal RPM for Uniformity", value=2000.0, min_value=500.0)
@@ -56,10 +59,20 @@ E_values = st.sidebar.multiselect(
     default=[0.0, 0.01, 0.03],
 )
 
+# -----------------------------
+# Core functions
+# -----------------------------
 def simulate_spin_coating(
-    rpm, h_0, mu_0, rho, E, k, t, dt,
+    rpm,
+    h_0,
+    mu_0,
+    rho,
+    E,
+    k,
+    t,
+    dt,
     use_evaporation=True,
-    use_viscosity_growth=True
+    use_viscosity_growth=True,
 ):
     omega = rpm * 2 * np.pi / 60
     time = np.arange(0, t + dt, dt)
@@ -73,7 +86,11 @@ def simulate_spin_coating(
     E_m_s = E * 1e-6 if use_evaporation else 0.0
 
     for i in range(len(time) - 1):
-        mu = mu_0 * np.exp(k * time[i]) if use_viscosity_growth else mu_0
+        if use_viscosity_growth:
+            mu = mu_0 * np.exp(k * time[i])
+        else:
+            mu = mu_0
+
         mu_arr[i] = mu
 
         dhdt = -(2 * rho * omega**2 / (3 * mu)) * h_m[i]**3 - E_m_s
@@ -84,7 +101,7 @@ def simulate_spin_coating(
     mu_arr[-1] = mu_0 * np.exp(k * time[-1]) if use_viscosity_growth else mu_0
     dhdt_arr[-1] = dhdt_arr[-2]
 
-    return pd.DataFrame({
+    df = pd.DataFrame({
         "Time (s)": time,
         "Thickness (μm)": h_m * 1e6,
         "Viscosity (Pa·s)": mu_arr,
@@ -92,14 +109,25 @@ def simulate_spin_coating(
         "dh/dt (μm/s)": dhdt_arr * 1e6,
     })
 
+    return df
+
+
 def calculate_effective_edge_strength(
-    base_alpha, rpm, rpm_opt, rpm_penalty_strength,
-    mu_0, mu_opt, mu_penalty_strength
+    base_alpha,
+    rpm,
+    rpm_opt,
+    rpm_penalty_strength,
+    mu_0,
+    mu_opt,
+    mu_penalty_strength,
 ):
     rpm_penalty = rpm_penalty_strength * ((rpm - rpm_opt) / rpm_opt) ** 2
     mu_penalty = mu_penalty_strength * ((mu_0 - mu_opt) / mu_opt) ** 2
+
     alpha_eff = base_alpha + rpm_penalty + mu_penalty
+
     return alpha_eff, rpm_penalty, mu_penalty
+
 
 def calculate_radial_profile(final_thickness, R_mm, edge_bead_width, alpha_eff):
     r = np.linspace(0, R_mm, 300)
@@ -120,6 +148,7 @@ def calculate_radial_profile(final_thickness, R_mm, edge_bead_width, alpha_eff):
 
     return r, h_r, uniformity, h_max, h_min, h_avg
 
+
 def calculate_t_gel(mu_0, mu_gel, k):
     if k <= 0:
         return None
@@ -127,33 +156,48 @@ def calculate_t_gel(mu_0, mu_gel, k):
         return 0
     return np.log(mu_gel / mu_0) / k
 
+
+# -----------------------------
+# Main simulation
+# -----------------------------
 df_ebp = simulate_spin_coating(
     rpm, h_0, mu_0, rho, 0.0, 0.0, t, dt,
     use_evaporation=False,
-    use_viscosity_growth=False
+    use_viscosity_growth=False,
 )
 
 df_meyer = simulate_spin_coating(
     rpm, h_0, mu_0, rho, E, k, t, dt,
     use_evaporation=True,
-    use_viscosity_growth=True
+    use_viscosity_growth=True,
 )
 
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
 alpha_eff, rpm_penalty, mu_penalty = calculate_effective_edge_strength(
-    base_edge_bead, rpm, rpm_opt, rpm_penalty_strength,
-    mu_0, mu_opt, mu_penalty_strength
+    base_edge_bead,
+    rpm,
+    rpm_opt,
+    rpm_penalty_strength,
+    mu_0,
+    mu_opt,
+    mu_penalty_strength,
 )
 
 r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile(
-    final_meyer, R_mm, edge_bead_width, alpha_eff
+    final_meyer,
+    R_mm,
+    edge_bead_width,
+    alpha_eff,
 )
 
 t_gel = calculate_t_gel(mu_0, mu_gel, k)
 uniformity_pass = uniformity <= uniformity_spec
 
+# -----------------------------
+# Main metrics
+# -----------------------------
 col1, col2, col3 = st.columns(3)
 col1.metric("Final Thickness: EBP", f"{final_ebp:.3f} μm")
 col2.metric("Final Thickness: Meyerhofer Model", f"{final_meyer:.3f} μm")
@@ -169,23 +213,33 @@ if t_gel is None:
 else:
     st.info(f"Predicted gel time t_gel = {t_gel:.2f} s, based on μ(t)=μ₀e^(kt).")
 
+# -----------------------------
+# Tabs
+# -----------------------------
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "Model Comparison",
     "RPM Effect",
     "Viscosity Effect",
     "Evaporation Effect",
     "Radial Uniformity",
-    "Data & Insight"
+    "Data & Insight",
 ])
 
 with tab1:
     st.subheader("EBP Model vs Meyerhofer Model")
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(df_ebp["Time (s)"], df_ebp["Thickness (μm)"],
-            label="EBP: no evaporation, constant viscosity")
-    ax.plot(df_meyer["Time (s)"], df_meyer["Thickness (μm)"],
-            label="Meyerhofer Model: evaporation + μ(t)", color="red")
+    ax.plot(
+        df_ebp["Time (s)"],
+        df_ebp["Thickness (μm)"],
+        label="EBP: no evaporation, constant viscosity",
+    )
+    ax.plot(
+        df_meyer["Time (s)"],
+        df_meyer["Thickness (μm)"],
+        label="Meyerhofer Model: evaporation + μ(t)",
+        color="red",
+    )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Film Thickness (μm)")
     ax.grid(True)
@@ -214,7 +268,12 @@ with tab2:
     ax.legend()
     st.pyplot(fig)
 
-    st.dataframe(pd.DataFrame(summary, columns=["RPM", "Input E (μm/s)", "Final Thickness (μm)"]))
+    st.dataframe(
+        pd.DataFrame(
+            summary,
+            columns=["RPM", "Input E (μm/s)", "Final Thickness (μm)"],
+        )
+    )
 
 with tab3:
     st.subheader("Effect of Initial Viscosity on Meyerhofer Model")
@@ -233,7 +292,12 @@ with tab3:
     ax.legend()
     st.pyplot(fig)
 
-    st.dataframe(pd.DataFrame(summary, columns=["Initial Viscosity (Pa·s)", "Final Thickness (μm)"]))
+    st.dataframe(
+        pd.DataFrame(
+            summary,
+            columns=["Initial Viscosity (Pa·s)", "Final Thickness (μm)"],
+        )
+    )
 
 with tab4:
     st.subheader("Effect of Solvent Evaporation Rate on Meyerhofer Model")
@@ -252,7 +316,12 @@ with tab4:
     ax.legend()
     st.pyplot(fig)
 
-    st.dataframe(pd.DataFrame(summary, columns=["Evaporation Rate E (μm/s)", "Final Thickness (μm)"]))
+    st.dataframe(
+        pd.DataFrame(
+            summary,
+            columns=["Evaporation Rate E (μm/s)", "Final Thickness (μm)"],
+        )
+    )
 
 with tab5:
     st.subheader("Final Radial Thickness Profile")
@@ -279,7 +348,7 @@ with tab5:
             "RPM Penalty",
             "Viscosity Penalty",
             "Effective Edge Bead Strength",
-            "Result"
+            "Result",
         ],
         "Value": [
             f"{h_min:.4f} μm",
@@ -293,8 +362,8 @@ with tab5:
             f"{rpm_penalty:.4f}",
             f"{mu_penalty:.4f}",
             f"{alpha_eff:.4f}",
-            "PASS" if uniformity_pass else "FAIL"
-        ]
+            "PASS" if uniformity_pass else "FAIL",
+        ],
     })
 
     st.subheader("Uniformity Evaluation")
