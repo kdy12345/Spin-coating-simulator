@@ -24,8 +24,8 @@ st.sidebar.header("Radial Profile / Uniformity")
 
 R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
 edge_bead_width = st.sidebar.number_input("Edge Bead Width w_edge (mm)", value=5.0, min_value=0.1)
-base_edge_bead = st.sidebar.slider("Initial Edge Bead Strength α₀", 0.0, 0.30, 0.10, 0.01)
-edge_relaxation_rate = st.sidebar.number_input("Edge Bead Relaxation Rate β (1/s)", value=0.005, min_value=0.0)
+base_edge_bead = st.sidebar.slider("Initial Edge Bead Strength α₀", 0.0, 0.30, 0.05, 0.01)
+edge_relaxation_rate = st.sidebar.number_input("Edge Bead Relaxation Rate β (1/s)", value=0.01, min_value=0.0)
 
 uniformity_spec = st.sidebar.number_input("Uniformity Spec (±%)", value=2.0, min_value=0.1)
 eta_gel = st.sidebar.number_input("Gel Viscosity η_gel (Pa·s)", value=0.30, min_value=0.001)
@@ -445,14 +445,14 @@ with tab7:
 
     challenge_rpm_values = st.multiselect(
         "Challenge RPM candidates",
-        [500, 1000, 1500, 2000, 2500, 3000],
-        default=[500, 1000, 1500, 2000, 2500, 3000],
+        [1000, 1500, 2000, 2500, 3000],
+        default=[1000, 1500, 2000, 2500, 3000],
     )
 
     challenge_eta_values = st.multiselect(
         "Challenge η₀ candidates (Pa·s)",
-        [0.03, 0.05, 0.10, 0.20],
-        default=[0.03, 0.05, 0.10, 0.20],
+        [0.03, 0.04, 0.05, 0.07, 0.10],
+        default=[0.03, 0.04, 0.05, 0.07, 0.10],
     )
 
     challenge_results = []
