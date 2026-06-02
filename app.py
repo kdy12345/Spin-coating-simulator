@@ -13,7 +13,7 @@ st.caption("EBP Model + Meyerhofer Model evaporation and viscosity increase")
 # -----------------------------
 st.sidebar.header("Input Parameters")
 
-rpm = st.sidebar.slider("RPM", 500, 4000, 3000, 100)
+rpm = st.sidebar.slider("RPM", 500, 3000, 3000, 100)
 h_0 = st.sidebar.number_input("Initial Thickness h₀ (μm)", value=100.0, min_value=1.0)
 mu_0 = st.sidebar.number_input("Initial Viscosity μ₀ (Pa·s)", value=0.05, min_value=0.001)
 rho = st.sidebar.number_input("Density ρ (kg/m³)", value=1000.0, min_value=1.0)
@@ -26,7 +26,8 @@ st.sidebar.markdown("---")
 st.sidebar.header("Radial Profile / Uniformity")
 
 R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
-edge_bead_strength = st.sidebar.slider("Base Edge Bead Strength α", 0.0, 0.10, 0.015, 0.005)
+# 과제 요구사항에 맞게 초기 뭉침 기본값을 0.05로 세팅하여 합격/불합격을 유도합니다.
+edge_bead_strength = st.sidebar.slider("Base Edge Bead Strength α", 0.0, 0.10, 0.05, 0.005)
 edge_exponent = st.sidebar.slider("Edge Bead Exponent n", 2, 12, 6, 1)
 rpm_sensitivity = st.sidebar.slider("RPM Sensitivity m", 0.0, 2.0, 0.5, 0.1)
 uniformity_spec = st.sidebar.number_input("Uniformity Spec (%)", value=2.0, min_value=0.1)
@@ -37,7 +38,7 @@ st.sidebar.header("Parameter Study")
 
 rpm_values = st.sidebar.multiselect(
     "RPM cases",
-    [500, 1000, 2000, 3000, 4000],
+    [500, 1000, 2000, 3000],
     default=[1000, 2000, 3000],
 )
 
@@ -105,18 +106,11 @@ def simulate_spin_coating(
     return df
 
 
-def calculate_effective_alpha(alpha, rpm, E, rpm_ref=3000, m=0.5):
+def calculate_effective_alpha(alpha, rpm, rpm_ref=3000, m=0.5):
+    # 과제 원본 수식 그대로 복구: RPM이 올라갈수록 원심력에 의해 Edge bead 강도가 감소하는 기본 모델
     if rpm == 0:
         return alpha
-    
-    # 1. 낮은 RPM 일 때 원심력 부족으로 인한 Edge Bead 현상
-    low_rpm_bead = alpha * (rpm_ref / rpm) ** m
-    
-    # 2. 높은 RPM 일 때 과도한 증발 패널티
-    # [수정된 밸런스]: 사용자의 기본 alpha 설정값에 비례하도록 연동하여 스펙 도달이 가능하도록 조정
-    high_rpm_dryness = 0.25 * alpha * (rpm / rpm_ref) ** 1.5 * (E / 0.01)
-    
-    return low_rpm_bead + high_rpm_dryness
+    return alpha * (rpm_ref / rpm) ** m
 
 
 def calculate_radial_profile(final_thickness, R_mm, alpha_eff, n):
@@ -130,7 +124,7 @@ def calculate_radial_profile(final_thickness, R_mm, alpha_eff, n):
     h_avg = np.mean(h_r)
 
     if h_avg > 0:
-        # 과제 스펙(±2%) 계산용 표준 공식 적용 (분모 2*평균값)
+        # [정확한 요구사항 반영] 과제 스펙(±2%)에 정합하도록 분모에 2를 곱해 균일도 편차 계산
         uniformity = (h_max - h_min) / (2 * h_avg) * 100
     else:
         uniformity = 0
@@ -164,10 +158,10 @@ df_meyer = simulate_spin_coating(
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
+# 오리지널 함수 호출로 복구
 alpha_eff = calculate_effective_alpha(
     edge_bead_strength,
     rpm,
-    E,
     rpm_ref=3000,
     m=rpm_sensitivity
 )
@@ -189,7 +183,7 @@ col3.metric("Thickness Difference", f"{final_meyer - final_ebp:.3f} μm")
 
 col4, col5, col6 = st.columns(3)
 col4.metric("Radial Uniformity", f"{uniformity:.3f} %")
-col5.metric("Effective Defect Strength (α_eff)", f"{alpha_eff:.4f}")
+col5.metric("Effective Edge Bead Strength", f"{alpha_eff:.4f}")
 col6.metric("Uniformity Result", "PASS" if uniformity_pass else "FAIL")
 
 if t_gel is None:
@@ -229,11 +223,6 @@ with tab1:
     ax.grid(True)
     ax.legend()
     st.pyplot(fig)
-
-    st.write(
-        "The EBP Model considers centrifugal thinning only. "
-        "The Meyerhofer Model includes solvent evaporation and viscosity increase."
-    )
 
 with tab2:
     st.subheader("Effect of Spin Speed on Meyerhofer Model")
@@ -312,7 +301,7 @@ with tab5:
             "Radial Uniformity",
             "Uniformity Spec",
             "Base Edge Bead Strength",
-            "Effective Defect Strength",
+            "Effective Edge Bead Strength",
             "RPM Sensitivity",
             "Result"
         ],
@@ -332,71 +321,15 @@ with tab5:
     st.subheader("Uniformity Evaluation")
     st.dataframe(uniformity_df)
 
-    st.write(
-        "The radial profile balances centrifugal edge-bead accumulation and high-RPM drying defects. "
-        "Uniformity will degrade at both extremely low RPM (due to edge bead) and extremely high RPM (due to flash evaporation)."
-    )
-
 with tab6:
     st.subheader("Simulation Data")
-
     st.dataframe(df_meyer)
 
-    st.subheader("Physical Interpretation")
-
-    st.markdown(
-        """
-        - **RPM과 균일도의 포물선 관계**: RPM이 과도하게 낮으면 가장자리가 두껍게 쌓이는 Edge Bead 불량이 발생하고, 반대로 너무 높으면 기류 변동 및 급격한 표면 증발에 의한 건조성 결함이 심화됩니다. 따라서 두 힘이 균형을 이루는 중간 지점을 포착해야 균일도가 최적화됩니다.
-        - Higher RPM increases centrifugal thinning, so the film thickness decreases faster.
-        - Higher initial viscosity suppresses radial flow, resulting in a thicker final film.
-        - Higher evaporation rate directly decreases the film thickness.
-        - In the early stage, rotation-driven thinning is dominant.
-        - As solvent evaporates and viscosity increases, radial flow weakens and evaporation becomes more important.
-        - The predicted gel time indicates when viscosity reaches the selected gel threshold.
-        """
-    )
-
     st.subheader("Governing Equation Used")
+    st.latex(r"\frac{dh}{dt} = -\frac{2\rho\omega^2}{3\mu(t)}h^3 - E")
+    st.latex(r"\mu(t)=\mu_0 e^{kt}")
 
-    st.latex(r"""
-    \frac{dh}{dt}
-    =
-    -\frac{2\rho\omega^2}{3\mu(t)}h^3
-    -
-    E
-    """)
-
-    st.latex(r"""
-    \mu(t)=\mu_0 e^{kt}
-    """)
-
-    st.latex(r"""
-    t_{gel}
-    =
-    \frac{1}{k}
-    \ln\left(\frac{\mu_{gel}}{\mu_0}\right)
-    """)
-
-    st.subheader("Modified Radial Profile Model Used")
-
-    st.latex(r"""
-    h(r,t)
-    =
-    h(t)
-    \left[
-    1+\alpha_{eff}\left(\frac{r}{R}\right)^n
-    \right]
-    """)
-
-    st.latex(r"""
-    \alpha_{eff}
-    =
-    \alpha \left( \frac{RPM_{ref}}{RPM} \right)^m + 0.25 \cdot \alpha \cdot \left( \frac{RPM}{RPM_{ref}} \right)^{1.5} \left( \frac{E}{0.01} \right)
-    """)
-
-    st.latex(r"""
-    Uniformity (\%)
-    =
-    \pm \frac{h_{max}-h_{min}}{2 \times h_{avg}}
-    \times 100
-    """)
+    st.subheader("Radial Profile & Uniformity Formula")
+    st.latex(r"h(r,t) = h(t) \left[ 1+\alpha_{eff}\left(\frac{r}{R}\right)^n \right]")
+    st.latex(r"\alpha_{eff} = \alpha \left( \frac{RPM_{ref}}{RPM} \right)^m")
+    st.latex(r"Uniformity (\%) = \pm \frac{h_{max}-h_{min}}{2 \times h_{avg}} \times 100")
