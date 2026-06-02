@@ -167,7 +167,7 @@ with tab2:
         summary.append([r, df["Thickness (μm)"].iloc[-1]])
 
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Film Thickness (μm)")
+    ax.set_ylabel("Film Thickness of Meyerhofer Model (μm)")
     ax.grid(True)
     ax.legend()
     st.pyplot(fig)
@@ -186,7 +186,7 @@ with tab3:
         summary.append([mu_case, df["Thickness (μm)"].iloc[-1]])
 
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Film Thickness (μm)")
+    ax.set_ylabel("Film Thickness of Meyerhofer Model (μm)")
     ax.grid(True)
     ax.legend()
     st.pyplot(fig)
@@ -205,7 +205,7 @@ with tab4:
         summary.append([E_case, df["Thickness (μm)"].iloc[-1]])
 
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Film Thickness (μm)")
+    ax.set_ylabel("Film Thickness of Meyerhofer Model (μm)")
     ax.grid(True)
     ax.legend()
     st.pyplot(fig)
