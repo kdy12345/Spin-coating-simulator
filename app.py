@@ -10,7 +10,7 @@ st.caption("EBP Model + Meyerhofer Model evaporation and viscosity increase")
 
 st.sidebar.header("Input Parameters")
 
-rpm = st.sidebar.slider("RPM", 500, 3000, 3000, 100)
+rpm = st.sidebar.slider("RPM", 500, 3000, 1800, 100)
 h_0 = st.sidebar.number_input("Initial Thickness h₀ (μm)", value=100.0, min_value=1.0)
 eta_0 = st.sidebar.number_input("Initial Viscosity η₀ (Pa·s)", value=0.05, min_value=0.001)
 rho = st.sidebar.number_input("Density ρ (kg/m³)", value=1000.0, min_value=1.0)
@@ -24,8 +24,14 @@ st.sidebar.header("Radial Profile / Uniformity")
 
 R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
 edge_bead_width = st.sidebar.number_input("Edge Bead Width w_edge (mm)", value=5.0, min_value=0.1)
-base_edge_bead = st.sidebar.slider("Initial Edge Bead Strength α₀", 0.0, 0.30, 0.05, 0.01)
-edge_relaxation_rate = st.sidebar.number_input("Edge Bead Relaxation Rate β (1/s)", value=0.01, min_value=0.0)
+
+base_edge_bead = st.sidebar.slider("Base Edge Bead Strength α₀", 0.0, 0.30, 0.05, 0.01)
+edge_relaxation_rate = st.sidebar.number_input("Edge Bead Relaxation Rate β (1/s)", value=0.005, min_value=0.0)
+
+rpm_opt = st.sidebar.number_input("Reference RPM for Uniformity", value=1800.0, min_value=500.0)
+eta_ref = st.sidebar.number_input("Reference Viscosity η_ref (Pa·s)", value=0.05, min_value=0.001)
+rpm_penalty_strength = st.sidebar.number_input("RPM Penalty Strength A_rpm", value=4.0, min_value=0.0)
+eta_penalty_strength = st.sidebar.number_input("Viscosity Penalty Strength A_eta", value=4.0, min_value=0.0)
 
 uniformity_spec = st.sidebar.number_input("Uniformity Spec (±%)", value=2.0, min_value=0.1)
 eta_gel = st.sidebar.number_input("Gel Viscosity η_gel (Pa·s)", value=0.30, min_value=0.001)
@@ -35,13 +41,13 @@ st.sidebar.write("Parameter Study")
 
 rpm_values = st.sidebar.multiselect(
     "RPM cases",
-    [500, 1000, 1500, 2000, 2500, 3000],
-    default=[1000, 2000, 3000],
+    [500, 1000, 1500, 1800, 2000, 2500, 3000],
+    default=[1000, 1800, 2500],
 )
 
 eta_values = st.sidebar.multiselect(
     "Viscosity cases η₀ (Pa·s)",
-    [0.03, 0.05, 0.10, 0.20],
+    [0.02, 0.03, 0.05, 0.08, 0.10, 0.15],
     default=[0.03, 0.05, 0.10],
 )
 
@@ -96,15 +102,24 @@ def simulate_spin_coating(
     })
 
 
-def calculate_alpha_t(alpha_0, beta, time_value, rpm, eta_0):
-    rpm_ref = 2000.0
-    eta_ref = 0.05
-
-    rpm_factor = (rpm_ref / rpm) ** 0.5
-    eta_factor = (eta_0 / eta_ref) ** 0.5
+def calculate_alpha_t(
+    alpha_0,
+    beta,
+    time_value,
+    rpm,
+    eta_0,
+    rpm_opt,
+    eta_ref,
+    rpm_penalty_strength,
+    eta_penalty_strength,
+):
+    rpm_penalty = rpm_penalty_strength * ((rpm - rpm_opt) / rpm_opt) ** 2
+    eta_penalty = eta_penalty_strength * ((eta_0 - eta_ref) / eta_ref) ** 2
     time_factor = np.exp(-beta * time_value)
 
-    return alpha_0 * rpm_factor * eta_factor * time_factor
+    alpha_t = alpha_0 * (1 + rpm_penalty + eta_penalty) * time_factor
+
+    return alpha_t, rpm_penalty, eta_penalty
 
 
 def calculate_radial_profile(thickness, R_mm, edge_bead_width, alpha_t):
@@ -158,12 +173,16 @@ def evaluate_condition(rpm_case, eta_case):
 
     final_thickness = df["Thickness (μm)"].iloc[-1]
 
-    alpha_case = calculate_alpha_t(
+    alpha_case, rpm_penalty_case, eta_penalty_case = calculate_alpha_t(
         base_edge_bead,
         edge_relaxation_rate,
         t,
         rpm_case,
         eta_case,
+        rpm_opt,
+        eta_ref,
+        rpm_penalty_strength,
+        eta_penalty_strength,
     )
 
     _, _, uniformity_case, _, _, _ = calculate_radial_profile(
@@ -181,6 +200,8 @@ def evaluate_condition(rpm_case, eta_case):
         "ω (rad/s)": omega_case,
         "η₀ (Pa·s)": eta_case,
         "Final Thickness (μm)": final_thickness,
+        "RPM Penalty": rpm_penalty_case,
+        "η₀ Penalty": eta_penalty_case,
         "Edge Bead Strength α(t_end)": alpha_case,
         "Radial Uniformity (±%)": uniformity_case if not np.isnan(uniformity_case) else None,
         "Result": result,
@@ -202,12 +223,16 @@ df_meyer = simulate_spin_coating(
 final_ebp = df_ebp["Thickness (μm)"].iloc[-1]
 final_meyer = df_meyer["Thickness (μm)"].iloc[-1]
 
-alpha_final = calculate_alpha_t(
+alpha_final, rpm_penalty_final, eta_penalty_final = calculate_alpha_t(
     base_edge_bead,
     edge_relaxation_rate,
     t,
     rpm,
     eta_0,
+    rpm_opt,
+    eta_ref,
+    rpm_penalty_strength,
+    eta_penalty_strength,
 )
 
 r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile(
@@ -362,12 +387,16 @@ with tab5:
     selected_time_actual = df_meyer.loc[idx, "Time (s)"]
     selected_thickness = df_meyer.loc[idx, "Thickness (μm)"]
 
-    alpha_selected = calculate_alpha_t(
+    alpha_selected, rpm_penalty_selected, eta_penalty_selected = calculate_alpha_t(
         base_edge_bead,
         edge_relaxation_rate,
         selected_time_actual,
         rpm,
         eta_0,
+        rpm_opt,
+        eta_ref,
+        rpm_penalty_strength,
+        eta_penalty_strength,
     )
 
     r_t, h_rt, u_t, hmax_t, hmin_t, havg_t = calculate_radial_profile(
@@ -393,7 +422,7 @@ with tab5:
 
     st.write(
         "This tab visualizes the time-dependent radial thickness profile h(r,t). "
-        "The edge bead strength changes with RPM, initial viscosity, and time."
+        "The edge bead strength becomes larger when RPM or η₀ deviates from the reference condition."
     )
 
 with tab6:
@@ -417,7 +446,9 @@ with tab6:
             "Uniformity Spec",
             "Wafer Radius",
             "Edge Bead Width",
-            "Initial Edge Bead Strength",
+            "Base Edge Bead Strength",
+            "RPM Penalty",
+            "η₀ Penalty",
             "Final Edge Bead Strength",
             "Edge Bead Relaxation Rate",
             "Result",
@@ -431,6 +462,8 @@ with tab6:
             f"{R_mm:.2f} mm",
             f"{edge_bead_width:.2f} mm",
             f"{base_edge_bead:.4f}",
+            f"{rpm_penalty_final:.4f}",
+            f"{eta_penalty_final:.4f}",
             f"{alpha_final:.4f}",
             f"{edge_relaxation_rate:.4f} 1/s",
             "PASS" if uniformity_pass else "FAIL",
@@ -445,14 +478,14 @@ with tab7:
 
     challenge_rpm_values = st.multiselect(
         "Challenge RPM candidates",
-        [1000, 1500, 2000, 2500, 3000],
-        default=[1000, 1500, 2000, 2500, 3000],
+        [500, 800, 1000, 1200, 1500, 1800, 2000, 2200, 2500, 2800, 3000],
+        default=[500, 800, 1000, 1200, 1500, 1800, 2000, 2200, 2500, 2800, 3000],
     )
 
     challenge_eta_values = st.multiselect(
         "Challenge η₀ candidates (Pa·s)",
-        [0.03, 0.04, 0.05, 0.07, 0.10],
-        default=[0.03, 0.04, 0.05, 0.07, 0.10],
+        [0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.10, 0.15, 0.20],
+        default=[0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.10, 0.15, 0.20],
     )
 
     challenge_results = []
@@ -473,18 +506,19 @@ with tab7:
 
         if len(feasible_df) > 0:
             feasible_df = feasible_df.sort_values(
-                by=["Radial Uniformity (±%)", "Final Thickness (μm)"],
-                ascending=[True, False],
+                by=["RPM", "η₀ (Pa·s)"],
+                ascending=[True, True],
             )
             st.dataframe(feasible_df)
 
-            best = feasible_df.iloc[0]
+            rpm_min = feasible_df["RPM"].min()
+            rpm_max = feasible_df["RPM"].max()
+            eta_min = feasible_df["η₀ (Pa·s)"].min()
+            eta_max = feasible_df["η₀ (Pa·s)"].max()
 
             st.success(
-                f"Best condition: RPM = {best['RPM']}, "
-                f"ω = {best['ω (rad/s)']:.2f} rad/s, "
-                f"η₀ = {best['η₀ (Pa·s)']:.3f} Pa·s, "
-                f"Uniformity = ±{best['Radial Uniformity (±%)']:.3f}%"
+                f"{len(feasible_df)} feasible combinations satisfy the ±{uniformity_spec:.2f}% uniformity spec. "
+                f"RPM range: {rpm_min}–{rpm_max}, η₀ range: {eta_min:.3f}–{eta_max:.3f} Pa·s."
             )
         else:
             st.warning("No tested condition satisfies the uniformity specification.")
@@ -501,9 +535,8 @@ with tab8:
     st.markdown(
         """
         - Higher RPM increases centrifugal thinning, so the film thickness decreases faster.
-        - Higher RPM also reduces the simplified edge bead factor in the radial profile model.
-        - Higher initial viscosity suppresses radial flow, resulting in a thicker final film.
-        - Higher initial viscosity increases the simplified edge bead factor.
+        - Radial uniformity is modeled using a U-shaped empirical penalty around a reference RPM and reference η₀.
+        - If RPM or η₀ is too far from the reference condition, the edge bead factor increases.
         - Higher solvent evaporation rate directly decreases the film thickness.
         - Film depletion is treated as a failed condition because radial uniformity is not physically meaningful when the film thickness becomes zero.
         - Radial evolution h(r,t) is visualized using a time slider.
@@ -548,8 +581,19 @@ with tab8:
     \alpha(t)
     =
     \alpha_0
-    \left(\frac{RPM_{ref}}{RPM}\right)^{1/2}
-    \left(\frac{\eta_0}{\eta_{ref}}\right)^{1/2}
+    \left[
+    1
+    +
+    A_{rpm}
+    \left(
+    \frac{RPM-RPM_{ref}}{RPM_{ref}}
+    \right)^2
+    +
+    A_{\eta}
+    \left(
+    \frac{\eta_0-\eta_{ref}}{\eta_{ref}}
+    \right)^2
+    \right]
     e^{-\beta t}
     """)
 
