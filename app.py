@@ -267,13 +267,12 @@ if t_gel is None:
 else:
     st.info(f"Predicted gel time t_gel = {t_gel:.2f} s, based on η(t)=η₀e^(kt).")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "Model Comparison",
     "RPM Effect",
     "Viscosity Effect",
     "Evaporation Effect",
     "Radial Evolution",
-    "Radial Uniformity",
     "Challenge Mode",
     "Data & Insight",
 ])
@@ -350,7 +349,7 @@ with tab4:
     st.dataframe(pd.DataFrame(summary, columns=["Evaporation Rate E (μm/s)", "Final Thickness (μm)"]))
 
 with tab5:
-    st.subheader("Radial Evolution of h(r,t)")
+    st.subheader("Radial Evolution and Uniformity of h(r,t)")
 
     selected_time = st.slider(
         "Select Time for Radial Profile (s)",
@@ -397,17 +396,7 @@ with tab5:
     col_b.metric("Edge Bead Strength α(t)", f"{alpha_selected:.4f}")
     col_c.metric("Radial Uniformity", format_uniformity(u_t))
 
-with tab6:
-    st.subheader("Final Radial Thickness Profile")
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(r_profile, h_profile, color="red", label="Final radial thickness")
-    ax.axhline(h_avg, linestyle="--", label="Average thickness")
-    ax.set_xlabel("Radial Position r (mm)")
-    ax.set_ylabel("Final Film Thickness h(r) (μm)")
-    ax.grid(True)
-    ax.legend()
-    st.pyplot(fig)
+    st.subheader("Final Uniformity Evaluation")
 
     uniformity_df = pd.DataFrame({
         "Metric": [
@@ -442,10 +431,9 @@ with tab6:
         ],
     })
 
-    st.subheader("Uniformity Evaluation")
     st.dataframe(uniformity_df)
 
-with tab7:
+with tab6:
     st.subheader("Challenge Mode: Find RPM and η₀ Conditions for ±2% Uniformity")
 
     rpm_start = st.number_input("RPM start", value=500, min_value=100)
@@ -489,7 +477,7 @@ with tab7:
     else:
         st.warning("No tested condition satisfies the uniformity specification.")
 
-with tab8:
+with tab7:
     st.subheader("Simulation Data")
 
     st.dataframe(df_meyer)
