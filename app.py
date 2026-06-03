@@ -8,6 +8,17 @@ st.set_page_config(page_title="Spin Coating Simulator", layout="wide")
 st.title("Spin Coating Simulator")
 st.caption("EBP Model + Meyerhofer Model evaporation and viscosity increase")
 
+# -----------------------------
+# Fixed empirical coefficients
+# -----------------------------
+RPM_REF = 1800.0
+ETA_REF = 0.05
+A_RPM = 4.0
+A_ETA = 4.0
+
+# -----------------------------
+# Sidebar input
+# -----------------------------
 st.sidebar.header("Input Parameters")
 
 rpm = st.sidebar.slider("RPM", 500, 3000, 1800, 100)
@@ -24,14 +35,8 @@ st.sidebar.header("Radial Profile / Uniformity")
 
 R_mm = st.sidebar.number_input("Wafer Radius R (mm)", value=50.0, min_value=1.0)
 edge_bead_width = st.sidebar.number_input("Edge Bead Width w_edge (mm)", value=5.0, min_value=0.1)
-
 base_edge_bead = st.sidebar.slider("Base Edge Bead Strength α₀", 0.0, 0.30, 0.05, 0.01)
 edge_relaxation_rate = st.sidebar.number_input("Edge Bead Relaxation Rate β (1/s)", value=0.005, min_value=0.0)
-
-rpm_opt = st.sidebar.number_input("Reference RPM for Uniformity", value=1800.0, min_value=500.0)
-eta_ref = st.sidebar.number_input("Reference Viscosity η_ref (Pa·s)", value=0.05, min_value=0.001)
-rpm_penalty_strength = st.sidebar.number_input("RPM Penalty Strength A_rpm", value=4.0, min_value=0.0)
-eta_penalty_strength = st.sidebar.number_input("Viscosity Penalty Strength A_eta", value=4.0, min_value=0.0)
 
 uniformity_spec = st.sidebar.number_input("Uniformity Spec (±%)", value=2.0, min_value=0.1)
 eta_gel = st.sidebar.number_input("Gel Viscosity η_gel (Pa·s)", value=0.30, min_value=0.001)
@@ -58,6 +63,9 @@ E_values = st.sidebar.multiselect(
 )
 
 
+# -----------------------------
+# Core functions
+# -----------------------------
 def simulate_spin_coating(
     rpm,
     h_0,
@@ -102,19 +110,9 @@ def simulate_spin_coating(
     })
 
 
-def calculate_alpha_t(
-    alpha_0,
-    beta,
-    time_value,
-    rpm,
-    eta_0,
-    rpm_opt,
-    eta_ref,
-    rpm_penalty_strength,
-    eta_penalty_strength,
-):
-    rpm_penalty = rpm_penalty_strength * ((rpm - rpm_opt) / rpm_opt) ** 2
-    eta_penalty = eta_penalty_strength * ((eta_0 - eta_ref) / eta_ref) ** 2
+def calculate_alpha_t(alpha_0, beta, time_value, rpm, eta_0):
+    rpm_penalty = A_RPM * ((rpm - RPM_REF) / RPM_REF) ** 2
+    eta_penalty = A_ETA * ((eta_0 - ETA_REF) / ETA_REF) ** 2
     time_factor = np.exp(-beta * time_value)
 
     alpha_t = alpha_0 * (1 + rpm_penalty + eta_penalty) * time_factor
@@ -179,10 +177,6 @@ def evaluate_condition(rpm_case, eta_case):
         t,
         rpm_case,
         eta_case,
-        rpm_opt,
-        eta_ref,
-        rpm_penalty_strength,
-        eta_penalty_strength,
     )
 
     _, _, uniformity_case, _, _, _ = calculate_radial_profile(
@@ -208,6 +202,9 @@ def evaluate_condition(rpm_case, eta_case):
     }
 
 
+# -----------------------------
+# Main simulation
+# -----------------------------
 df_ebp = simulate_spin_coating(
     rpm, h_0, eta_0, rho, 0.0, 0.0, t, dt,
     use_evaporation=False,
@@ -229,10 +226,6 @@ alpha_final, rpm_penalty_final, eta_penalty_final = calculate_alpha_t(
     t,
     rpm,
     eta_0,
-    rpm_opt,
-    eta_ref,
-    rpm_penalty_strength,
-    eta_penalty_strength,
 )
 
 r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile(
@@ -245,6 +238,9 @@ r_profile, h_profile, uniformity, h_max, h_min, h_avg = calculate_radial_profile
 t_gel = calculate_t_gel(eta_0, eta_gel, k)
 uniformity_pass = check_uniformity_pass(uniformity, final_meyer, uniformity_spec)
 
+# -----------------------------
+# Metrics
+# -----------------------------
 col1, col2, col3 = st.columns(3)
 col1.metric("Final Thickness: EBP", f"{final_ebp:.3f} μm")
 col2.metric("Final Thickness: Meyerhofer Model", f"{final_meyer:.3f} μm")
@@ -263,6 +259,9 @@ if t_gel is None:
 else:
     st.info(f"Predicted gel time t_gel = {t_gel:.2f} s, based on η(t)=η₀e^(kt).")
 
+# -----------------------------
+# Tabs
+# -----------------------------
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "Model Comparison",
     "RPM Effect",
@@ -393,10 +392,6 @@ with tab5:
         selected_time_actual,
         rpm,
         eta_0,
-        rpm_opt,
-        eta_ref,
-        rpm_penalty_strength,
-        eta_penalty_strength,
     )
 
     r_t, h_rt, u_t, hmax_t, hmin_t, havg_t = calculate_radial_profile(
@@ -422,7 +417,7 @@ with tab5:
 
     st.write(
         "This tab visualizes the time-dependent radial thickness profile h(r,t). "
-        "The edge bead strength becomes larger when RPM or η₀ deviates from the reference condition."
+        "The edge bead strength is calculated using fixed empirical sensitivity coefficients."
     )
 
 with tab6:
@@ -447,6 +442,10 @@ with tab6:
             "Wafer Radius",
             "Edge Bead Width",
             "Base Edge Bead Strength",
+            "RPM Reference",
+            "η Reference",
+            "A_rpm",
+            "A_eta",
             "RPM Penalty",
             "η₀ Penalty",
             "Final Edge Bead Strength",
@@ -462,6 +461,10 @@ with tab6:
             f"{R_mm:.2f} mm",
             f"{edge_bead_width:.2f} mm",
             f"{base_edge_bead:.4f}",
+            f"{RPM_REF:.0f} rpm",
+            f"{ETA_REF:.3f} Pa·s",
+            f"{A_RPM:.2f}",
+            f"{A_ETA:.2f}",
             f"{rpm_penalty_final:.4f}",
             f"{eta_penalty_final:.4f}",
             f"{alpha_final:.4f}",
@@ -538,7 +541,8 @@ with tab8:
     st.markdown(
         """
         - Higher RPM increases centrifugal thinning, so the film thickness decreases faster.
-        - Radial uniformity is modeled using a U-shaped empirical penalty around a reference RPM and reference η₀.
+        - Radial uniformity is modeled using fixed empirical sensitivity coefficients.
+        - A_rpm and A_eta are not material constants; they are visualization parameters for the simplified radial model.
         - If RPM or η₀ is too far from the reference condition, the edge bead factor increases.
         - Higher solvent evaporation rate directly decreases the film thickness.
         - Film depletion is treated as a failed condition because radial uniformity is not physically meaningful when the film thickness becomes zero.
