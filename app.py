@@ -476,17 +476,23 @@ with tab6:
 with tab7:
     st.subheader("Challenge Mode: Find RPM and η₀ Conditions for ±2% Uniformity")
 
-    challenge_rpm_values = st.multiselect(
-        "Challenge RPM candidates",
-        [500, 800, 1000, 1200, 1500, 1800, 2000, 2200, 2500, 2800, 3000],
-        default=[500, 800, 1000, 1200, 1500, 1800, 2000, 2200, 2500, 2800, 3000],
+    rpm_start = st.number_input("RPM start", value=500, min_value=100)
+    rpm_end = st.number_input("RPM end", value=3000, min_value=100)
+    rpm_step = st.number_input("RPM step", value=100, min_value=10)
+
+    eta_start = st.number_input("η₀ start (Pa·s)", value=0.01, min_value=0.001, format="%.3f")
+    eta_end = st.number_input("η₀ end (Pa·s)", value=0.20, min_value=0.001, format="%.3f")
+    eta_step = st.number_input("η₀ step (Pa·s)", value=0.01, min_value=0.001, format="%.3f")
+
+    challenge_rpm_values = list(range(int(rpm_start), int(rpm_end) + 1, int(rpm_step)))
+    challenge_eta_values = np.round(
+        np.arange(eta_start, eta_end + eta_step, eta_step),
+        3
     )
 
-    challenge_eta_values = st.multiselect(
-        "Challenge η₀ candidates (Pa·s)",
-        [0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.10, 0.15, 0.20],
-        default=[0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.10, 0.15, 0.20],
-    )
+    st.write(f"RPM cases: {len(challenge_rpm_values)}")
+    st.write(f"η₀ cases: {len(challenge_eta_values)}")
+    st.write(f"Total tested combinations: {len(challenge_rpm_values) * len(challenge_eta_values)}")
 
     challenge_results = []
 
@@ -496,34 +502,31 @@ with tab7:
 
     challenge_df = pd.DataFrame(challenge_results)
 
-    if len(challenge_df) > 0:
-        st.subheader("All Tested Conditions")
-        st.dataframe(challenge_df)
+    st.subheader("All Tested Conditions")
+    st.dataframe(challenge_df)
 
-        feasible_df = challenge_df[challenge_df["Result"] == "PASS"].copy()
+    feasible_df = challenge_df[challenge_df["Result"] == "PASS"].copy()
 
-        st.subheader("Feasible Conditions Satisfying Uniformity Spec")
+    st.subheader("Feasible Conditions Satisfying Uniformity Spec")
 
-        if len(feasible_df) > 0:
-            feasible_df = feasible_df.sort_values(
-                by=["RPM", "η₀ (Pa·s)"],
-                ascending=[True, True],
-            )
-            st.dataframe(feasible_df)
+    if len(feasible_df) > 0:
+        feasible_df = feasible_df.sort_values(
+            by=["RPM", "η₀ (Pa·s)"],
+            ascending=[True, True],
+        )
+        st.dataframe(feasible_df)
 
-            rpm_min = feasible_df["RPM"].min()
-            rpm_max = feasible_df["RPM"].max()
-            eta_min = feasible_df["η₀ (Pa·s)"].min()
-            eta_max = feasible_df["η₀ (Pa·s)"].max()
+        rpm_min = feasible_df["RPM"].min()
+        rpm_max = feasible_df["RPM"].max()
+        eta_min = feasible_df["η₀ (Pa·s)"].min()
+        eta_max = feasible_df["η₀ (Pa·s)"].max()
 
-            st.success(
-                f"{len(feasible_df)} feasible combinations satisfy the ±{uniformity_spec:.2f}% uniformity spec. "
-                f"RPM range: {rpm_min}–{rpm_max}, η₀ range: {eta_min:.3f}–{eta_max:.3f} Pa·s."
-            )
-        else:
-            st.warning("No tested condition satisfies the uniformity specification.")
+        st.success(
+            f"{len(feasible_df)} feasible combinations satisfy the ±{uniformity_spec:.2f}% uniformity spec. "
+            f"RPM range: {rpm_min}–{rpm_max}, η₀ range: {eta_min:.3f}–{eta_max:.3f} Pa·s."
+        )
     else:
-        st.warning("Select at least one RPM and one η₀ candidate.")
+        st.warning("No tested condition satisfies the uniformity specification.")
 
 with tab8:
     st.subheader("Simulation Data")
