@@ -13,7 +13,7 @@ ETA_REF = 0.05
 
 st.sidebar.header("Input Parameters")
 
-rpm = st.sidebar.slider("RPM", 500, 3000, 1800, 100)
+rpm = st.sidebar.slider("RPM", 500, 5000, 1800, 100)
 h_0 = st.sidebar.number_input("Initial Thickness h₀ (μm)", value=100.0, min_value=1.0)
 eta_0 = st.sidebar.number_input("Initial Viscosity η₀ (Pa·s)", value=0.05, min_value=0.001)
 rho = st.sidebar.number_input("Density ρ (kg/m³)", value=1000.0, min_value=1.0)
@@ -38,8 +38,8 @@ st.sidebar.write("Parameter Study")
 
 rpm_values = st.sidebar.multiselect(
     "RPM cases",
-    [500, 1000, 1500, 1800, 2000, 2500, 3000],
-    default=[1000, 1800, 2500],
+    [500, 1000, 1500, 1800, 2000, 2500, 3000, 4000, 5000],
+    default=[1000, 1800, 3000],
 )
 
 eta_values = st.sidebar.multiselect(
@@ -449,7 +449,7 @@ with tab7:
     st.subheader("Challenge Mode: Find RPM and η₀ Conditions for ±2% Uniformity")
 
     rpm_start = st.number_input("RPM start", value=500, min_value=100)
-    rpm_end = st.number_input("RPM end", value=3000, min_value=100)
+    rpm_end = st.number_input("RPM end", value=5000, min_value=100)
     rpm_step = st.number_input("RPM step", value=100, min_value=10)
 
     eta_start = st.number_input("η₀ start (Pa·s)", value=0.01, min_value=0.001, format="%.3f")
@@ -482,14 +482,9 @@ with tab7:
         feasible_df = feasible_df.sort_values(by=["RPM", "η₀ (Pa·s)"], ascending=[True, True])
         st.dataframe(feasible_df)
 
-        rpm_min = feasible_df["RPM"].min()
-        rpm_max = feasible_df["RPM"].max()
-        eta_min = feasible_df["η₀ (Pa·s)"].min()
-        eta_max = feasible_df["η₀ (Pa·s)"].max()
-
         st.success(
             f"{len(feasible_df)} feasible combinations satisfy the ±{uniformity_spec:.2f}% uniformity spec. "
-            f"RPM range: {rpm_min}–{rpm_max}, η₀ range: {eta_min:.3f}–{eta_max:.3f} Pa·s."
+            "See the feasible conditions table for valid RPM–η₀ pairs."
         )
     else:
         st.warning("No tested condition satisfies the uniformity specification.")
